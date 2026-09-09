@@ -283,6 +283,7 @@
       <button class="btn" id="go-create">Criar jogo</button>
       <button class="btn ghost" id="go-join">Entrar com código</button>
       <button class="linkbtn" id="go-mesa" hidden>Criar jogo pra galera de fora</button>
+      <button class="linkbtn" id="go-conta" hidden></button>
       <button class="linkbtn" id="go-resume" hidden></button>
     </div>
   </section>
@@ -589,6 +590,99 @@
     <div class="rows" id="hist-geral"></div>
     <div class="rows" id="hist-partidas" hidden></div>
     <p class="note" id="hist-vazio" hidden>Nenhuma partida terminada ainda. Joguem a primeira!</p>
+  </section>
+
+  <section class="screen" id="s-conta">
+    <div class="topbar"><button class="back" data-back="s-home">← Voltar</button></div>
+
+    <!-- deslogado: pedir o link -->
+    <div class="mid" id="conta-login" hidden>
+      <div class="stack" style="gap:8px">
+        <p class="eyebrow">Sua conta</p>
+        <h2>Entrar sem senha</h2>
+        <p class="lede">Digite seu e-mail e a gente manda um link. Tocou no link, entrou — não tem senha pra esquecer.</p>
+      </div>
+      <input id="conta-email" class="field" type="email" inputmode="email" autocomplete="email"
+             autocorrect="off" spellcheck="false" aria-label="Seu e-mail" placeholder="voce@exemplo.com">
+      <p class="err" id="conta-err" role="status"></p>
+      <p class="note" id="conta-aviso" hidden></p>
+    </div>
+
+    <!-- link enviado -->
+    <div class="mid" id="conta-enviado" hidden>
+      <div class="stack" style="gap:8px">
+        <p class="eyebrow">Quase lá</p>
+        <h2>Olha seu e-mail</h2>
+        <p class="lede" id="conta-enviado-txt"></p>
+        <p class="note">Se não chegar em um minuto, veja no spam. O link vale uma vez só.</p>
+      </div>
+    </div>
+
+    <!-- logado, sem perfil: escolher nick -->
+    <div class="mid" id="conta-novo" hidden>
+      <div class="stack" style="gap:8px">
+        <p class="eyebrow">Falta pouco</p>
+        <h2>Escolha seu apelido</h2>
+        <p class="lede">É por ele que seus amigos vão te achar. De 3 a 16 letras, sem espaço — e é único no jogo inteiro.</p>
+      </div>
+      <input id="conta-nick" class="field" maxlength="20" autocomplete="off"
+             autocorrect="off" spellcheck="false" aria-label="Seu apelido">
+      <input id="conta-nome" class="field" maxlength="40" autocomplete="name"
+             aria-label="Seu nome" placeholder="seu nome (opcional)">
+      <p class="err" id="conta-novo-err" role="status"></p>
+    </div>
+
+    <!-- logado, com perfil -->
+    <div class="mid" id="conta-perfil" hidden>
+      <div class="stack" style="gap:8px">
+        <p class="eyebrow">Sua conta</p>
+        <h2 id="conta-perfil-nick"></h2>
+        <p class="note" id="conta-perfil-email"></p>
+      </div>
+      <div class="rows" id="conta-numeros"></div>
+      <p class="note" id="conta-perfil-vazio" hidden>Você ainda não terminou nenhuma partida com a conta ligada.</p>
+    </div>
+
+    <div class="foot">
+      <button class="btn" id="conta-enviar" hidden>Mandar o link</button>
+      <button class="btn" id="conta-criar" hidden>Criar minha conta</button>
+      <button class="btn" id="conta-amigos" hidden>Meus amigos</button>
+      <button class="linkbtn" id="conta-sair" hidden>Sair da conta</button>
+    </div>
+  </section>
+
+  <section class="screen" id="s-amigos">
+    <div class="topbar"><button class="back" data-back="s-conta">← Voltar</button></div>
+    <div class="stack" style="gap:6px"><h2>Amigos</h2></div>
+
+    <div class="seg" id="amigos-abas" style="grid-template-columns:repeat(2,1fr)">
+      <button type="button" id="aba-rank" aria-pressed="true"><b>Ranking</b></button>
+      <button type="button" id="aba-lista" aria-pressed="false"><b>Lista</b></button>
+    </div>
+
+    <div id="amigos-painel-rank">
+      <div class="rows" id="amigos-rank"></div>
+      <p class="note" id="amigos-rank-vazio" hidden>
+        O ranking soma as partidas de quem é seu amigo. Adicione alguém na aba Lista.
+      </p>
+    </div>
+
+    <div id="amigos-painel-lista" hidden>
+      <div class="stack" style="gap:10px">
+        <input id="amigos-busca" class="field" maxlength="20" autocomplete="off"
+               autocorrect="off" spellcheck="false" aria-label="Apelido do amigo"
+               placeholder="apelido de quem você quer adicionar">
+        <button class="btn ghost" id="amigos-add">Adicionar</button>
+        <p class="err" id="amigos-err" role="status"></p>
+      </div>
+      <div id="amigos-pedidos-sec" hidden>
+        <p class="eyebrow" style="margin:14px 0 8px">Pedidos recebidos</p>
+        <div class="rows" id="amigos-pedidos"></div>
+      </div>
+      <p class="eyebrow" style="margin:14px 0 8px">Seus amigos</p>
+      <div class="rows" id="amigos-lista"></div>
+      <p class="note" id="amigos-lista-vazio" hidden>Ninguém ainda.</p>
+    </div>
   </section>
 
 </div>
@@ -1847,7 +1941,309 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     }
   }
 
+  /* ============================================================
+     CONTA E AMIGOS
+     Só acende quando o Firebase responde. Sem conta, o jogo inteiro
+     continua funcionando como convidado — é assim desde sempre e
+     continua sendo: a conta acrescenta rank e permanência, não é
+     pedágio pra jogar.
+     ============================================================ */
+
+  var CONTA = {
+    api: null,        // CriarContas(db)
+    ident: null,      // {uid, email} do Firebase Auth
+    perfil: null,     // perfis/{uid} + dados privados do dono
+    aba: "rank"
+  };
+
+  function contaLigada(){ return !!(CONTA.api && CONTA.ident); }
+
+  function contaErro(id, msg){
+    var el = $(id);
+    if (el) el.textContent = msg || "";
+  }
+
+  /* Traduz os códigos do contas.js pra frase que a pessoa entende.
+     Mensagem de erro tem que dizer o que houve E o que fazer. */
+  function contaMotivo(e){
+    var c = e && e.code;
+    if (c === "nick_em_uso")     return "Esse apelido já é de outra pessoa. Tente outro.";
+    if (c === "nick_invalido")   return "O apelido precisa de 3 a 16 letras ou números.";
+    if (c === "email_invalido")  return "Esse e-mail não parece certo.";
+    if (c === "ja_existe")       return "Você já tem uma conta.";
+    if (c === "sem_perfil")      return "Não achei essa conta.";
+    if (c === "conta_removida")  return "Essa conta foi encerrada.";
+    if (c === "amigo_de_si")     return "Esse é você.";
+    if (c === "sem_pedido")      return "Não há pedido dessa pessoa.";
+    if (c === "permission-denied") return "Sem permissão pra isso.";
+    return "Não consegui agora. Tente de novo.";
+  }
+
+  /* ---- pintura da tela de conta ---- */
+  function pintarConta(){
+    var login = $("conta-login"), enviado = $("conta-enviado");
+    var novo = $("conta-novo"), perfil = $("conta-perfil");
+    var bEnviar = $("conta-enviar"), bCriar = $("conta-criar");
+    var bAmigos = $("conta-amigos"), bSair = $("conta-sair");
+    if (!login) return;
+
+    var telas = [login, enviado, novo, perfil];
+    for (var i = 0; i < telas.length; i++) telas[i].hidden = true;
+    bEnviar.hidden = bCriar.hidden = bAmigos.hidden = bSair.hidden = true;
+
+    if (!CONTA.ident){
+      login.hidden = false;
+      bEnviar.hidden = false;
+      var em = $("conta-email");
+      if (em && !em.value) em.value = ultimoEmail();
+      return;
+    }
+    if (!CONTA.perfil){
+      novo.hidden = false;
+      bCriar.hidden = bSair.hidden = false;
+      var nk = $("conta-nick");
+      if (nk && !nk.value) nk.value = ultimoNick();
+      return;
+    }
+
+    perfil.hidden = false;
+    bAmigos.hidden = bSair.hidden = false;
+    $("conta-perfil-nick").textContent = CONTA.perfil.nick;
+    $("conta-perfil-email").textContent = CONTA.perfil.email || "";
+
+    var p = CONTA.perfil, jogou = (p.partidas || 0) > 0;
+    $("conta-perfil-vazio").hidden = jogou;
+    var box = $("conta-numeros");
+    box.innerHTML = "";
+    if (!jogou) return;
+
+    var aprov = p.partidas ? (p.somaAprov || 0) / p.partidas : 0.5;
+    linhaNumero(box, "Saldo", (p.saldo > 0 ? "+" : "") + p.saldo,
+      "quanto você tirou de vantagem sobre o esperado");
+    linhaNumero(box, "Aproveitamento", Math.round(aprov * 100) + "%",
+      "50% é o que a sorte daria");
+    linhaNumero(box, "Partidas", String(p.partidas), "");
+    linhaNumero(box, "Vitórias", String(p.vitorias || 0), "");
+  }
+
+  function linhaNumero(box, rotulo, valor, sub){
+    var row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = '<span class="grow"><b></b><span class="sub"></span></span>' +
+                    '<span class="pos"></span>';
+    row.querySelector("b").textContent = rotulo;
+    row.querySelectorAll("span")[1].textContent = sub || "";
+    row.querySelector(".pos").textContent = valor;
+    box.appendChild(row);
+  }
+
+  function ultimoEmail(){
+    try { return localStorage.getItem("quemsoueu:email-pendente") || ""; } catch(e){ return ""; }
+  }
+
+  /* ---- carregar o perfil do uid logado ---- */
+  function carregarPerfil(){
+    if (!contaLigada()) { CONTA.perfil = null; pintarConta(); pintarHome(); return; }
+    CONTA.api.perfil(CONTA.ident.uid).then(function(p){
+      CONTA.perfil = p;
+      pintarConta(); pintarHome();
+    }, function(){
+      CONTA.perfil = null; pintarConta(); pintarHome();
+    });
+  }
+
+  /* ---- amigos ---- */
+  function pintarAmigos(){
+    if (!contaLigada() || !CONTA.perfil) return;
+    var ehRank = CONTA.aba === "rank";
+    $("aba-rank").setAttribute("aria-pressed", ehRank ? "true" : "false");
+    $("aba-lista").setAttribute("aria-pressed", ehRank ? "false" : "true");
+    $("amigos-painel-rank").hidden = !ehRank;
+    $("amigos-painel-lista").hidden = ehRank;
+    if (ehRank) pintarRank(); else pintarLista();
+  }
+
+  function pintarRank(){
+    CONTA.api.rankAmigos(CONTA.ident.uid).then(function(linhas){
+      var box = $("amigos-rank");
+      box.innerHTML = "";
+      var comJogo = [];
+      for (var i = 0; i < linhas.length; i++) if (linhas[i].partidas > 0) comJogo.push(linhas[i]);
+      $("amigos-rank-vazio").hidden = comJogo.length > 0;
+      for (var k = 0; k < comJogo.length; k++){
+        var r = comJogo[k];
+        var row = document.createElement("div");
+        row.className = "row";
+        row.innerHTML = '<span class="pos"></span>' +
+          '<span class="grow"><b></b><span class="sub"></span></span>' +
+          '<span class="pos"></span>';
+        var celulas = row.querySelectorAll(".pos");
+        celulas[0].textContent = r.posicao + "º";
+        row.querySelector("b").textContent = r.nick + (r.eu ? " (você)" : "");
+        row.querySelectorAll("span")[2].textContent =
+          Math.round(r.aproveitamento * 100) + "% · " + r.partidas +
+          (r.partidas === 1 ? " partida" : " partidas");
+        celulas[1].textContent = (r.saldo > 0 ? "+" : "") + r.saldo;
+        box.appendChild(row);
+      }
+    }, function(){});
+  }
+
+  function pintarLista(){
+    var uid = CONTA.ident.uid;
+    CONTA.api.pedidosRecebidos(uid).then(function(pedidos){
+      var sec = $("amigos-pedidos-sec"), box = $("amigos-pedidos");
+      sec.hidden = pedidos.length === 0;
+      box.innerHTML = "";
+      for (var i = 0; i < pedidos.length; i++){
+        (function(p){
+          var row = document.createElement("div");
+          row.className = "row";
+          row.innerHTML = '<span class="grow"><b></b><span class="sub">quer ser seu amigo</span></span>';
+          row.querySelector("b").textContent = p.nick || p.uid;
+          var sim = document.createElement("button");
+          sim.className = "linkbtn"; sim.type = "button"; sim.textContent = "aceitar";
+          sim.addEventListener("click", function(){
+            CONTA.api.aceitar(uid, p.uid).then(pintarAmigos, function(e){
+              toast(contaMotivo(e));
+            });
+          });
+          var nao = document.createElement("button");
+          nao.className = "linkbtn"; nao.type = "button"; nao.textContent = "recusar";
+          nao.addEventListener("click", function(){
+            CONTA.api.recusar(uid, p.uid).then(pintarAmigos, function(){});
+          });
+          row.appendChild(sim); row.appendChild(nao);
+          box.appendChild(row);
+        })(pedidos[i]);
+      }
+    }, function(){});
+
+    CONTA.api.amigos(uid).then(function(as){
+      var box = $("amigos-lista");
+      box.innerHTML = "";
+      $("amigos-lista-vazio").hidden = as.length > 0;
+      for (var i = 0; i < as.length; i++){
+        (function(a){
+          var row = document.createElement("div");
+          row.className = "row";
+          row.innerHTML = '<span class="grow"><b></b></span>';
+          row.querySelector("b").textContent = a.nick || a.uid;
+          var rm = document.createElement("button");
+          rm.className = "linkbtn"; rm.type = "button"; rm.textContent = "remover";
+          rm.addEventListener("click", function(){
+            CONTA.api.remover(uid, a.uid).then(pintarAmigos, function(){});
+          });
+          row.appendChild(rm);
+          box.appendChild(row);
+        })(as[i]);
+      }
+    }, function(){});
+  }
+
+  /* ---- ligações de tela ---- */
+  function ligarConta(){
+    var go = $("go-conta");
+    if (go) go.addEventListener("click", function(){ show("s-conta"); pintarConta(); });
+
+    var enviar = $("conta-enviar");
+    if (enviar) enviar.addEventListener("click", function(){
+      var QF = window.QSE_FIREBASE;
+      if (!QF) return;
+      var email = ($("conta-email").value || "").trim();
+      contaErro("conta-err", "");
+      enviar.disabled = true;
+      QF.enviarLink(email).then(function(e){
+        $("conta-enviado-txt").textContent = "Mandamos um link para " + e + ".";
+        $("conta-login").hidden = true;
+        $("conta-enviado").hidden = false;
+        enviar.hidden = true; enviar.disabled = false;
+      }, function(err){
+        enviar.disabled = false;
+        contaErro("conta-err", (err && err.message === "e-mail inválido")
+          ? "Esse e-mail não parece certo."
+          : "Não consegui mandar o link agora. Confira o e-mail e tente de novo.");
+      });
+    });
+
+    var criar = $("conta-criar");
+    if (criar) criar.addEventListener("click", function(){
+      if (!contaLigada()) return;
+      contaErro("conta-novo-err", "");
+      criar.disabled = true;
+      CONTA.api.criar(CONTA.ident.uid, {
+        nick: $("conta-nick").value,
+        nome: $("conta-nome").value,
+        email: CONTA.ident.email
+      }).then(function(p){
+        criar.disabled = false;
+        CONTA.perfil = p;
+        lembrarNick(p.nick);
+        pintarConta(); pintarHome();
+        toast("Conta criada. Bem-vindo, " + p.nick + ".");
+      }, function(e){
+        criar.disabled = false;
+        contaErro("conta-novo-err", contaMotivo(e));
+      });
+    });
+
+    var bAmigos = $("conta-amigos");
+    if (bAmigos) bAmigos.addEventListener("click", function(){
+      show("s-amigos"); pintarAmigos();
+    });
+
+    var sair = $("conta-sair");
+    if (sair) sair.addEventListener("click", function(){
+      var QF = window.QSE_FIREBASE;
+      if (!QF) return;
+      QF.sair().then(function(){ toast("Você saiu da conta."); }, function(){});
+    });
+
+    var abaR = $("aba-rank"), abaL = $("aba-lista");
+    if (abaR) abaR.addEventListener("click", function(){ CONTA.aba = "rank"; pintarAmigos(); });
+    if (abaL) abaL.addEventListener("click", function(){ CONTA.aba = "lista"; pintarAmigos(); });
+
+    var add = $("amigos-add");
+    if (add) add.addEventListener("click", function(){
+      if (!contaLigada()) return;
+      var nick = ($("amigos-busca").value || "").trim();
+      contaErro("amigos-err", "");
+      if (!nick) return;
+      add.disabled = true;
+      CONTA.api.porNick(nick).then(function(achado){
+        if (!achado){
+          add.disabled = false;
+          contaErro("amigos-err", "Não achei ninguém com o apelido “" + nick + "”.");
+          return null;
+        }
+        return CONTA.api.pedir(CONTA.ident.uid, achado.uid).then(function(r){
+          add.disabled = false;
+          $("amigos-busca").value = "";
+          toast(r === "pedido" ? "Pedido enviado."
+              : r === "aceito" ? "Vocês já são amigos."
+              : r === "ja_amigos" ? "Vocês já são amigos."
+              : "Pedido já estava enviado.");
+          pintarAmigos();
+        });
+      }, function(){ add.disabled = false; })["catch"](function(e){
+        add.disabled = false;
+        contaErro("amigos-err", contaMotivo(e));
+      });
+    });
+  }
+
   function pintarHome(){
+    /* O botão de conta só existe quando o Firebase respondeu. Rodando
+       como Artifact, ou offline, ele nem aparece — não adianta oferecer
+       login onde não há como logar. */
+    var bc = $("go-conta");
+    if (bc){
+      bc.hidden = !CONTA.api;
+      bc.textContent = !CONTA.ident ? "Entrar na minha conta"
+                     : !CONTA.perfil ? "Terminar meu cadastro"
+                     : CONTA.perfil.nick + " · amigos e ranking";
+    }
+
     var salas = ONLINE ? lerSalas() : [];
     var wrap = $("home-salas"), lst = $("home-salas-list");
     if (!salas.length){ wrap.hidden = true; return; }
@@ -2990,12 +3386,46 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   var QF = (typeof window !== "undefined" && window) ? window.QSE_FIREBASE : null;
   if (QF && typeof QF.aoMudar === "function"){
+    ligarConta();
     QF.aoMudar(function(e){
       if (!e || !e.db) return;
       /* Passa a identidade sempre: ativarOnline só liga uma vez, mas a
          identidade pode mudar depois (a pessoa entra na conta com o
          jogo já aberto), e aí a próxima sala já nasce com o uid. */
       ativarOnline(e.db, e.identidade || null);
+
+      /* CriarContas fala o mesmo contrato de db do resto do jogo, então
+         é o mesmo objeto que as salas usam. Ele vive em window.CONTAS,
+         não solto no global — contas.js exporta um namespace. */
+      var NS = (typeof window !== "undefined" && window) ? window.CONTAS : null;
+      if (!CONTA.api && NS && typeof NS.CriarContas === "function"){
+        CONTA.api = NS.CriarContas(e.db);
+      }
+      CONTA.ident = e.identidade || null;
+      carregarPerfil();
+
+      /* Voltou de um link mágico aberto em OUTRO navegador: o e-mail não
+         está guardado aqui, então só a pessoa pode dizer qual é. */
+      if (QF.precisaConfirmarEmail && QF.precisaConfirmarEmail()){
+        show("s-conta");
+        pintarConta();
+        var aviso = $("conta-aviso");
+        if (aviso){
+          aviso.hidden = false;
+          aviso.textContent = "Confirme o e-mail que recebeu o link para terminar de entrar.";
+        }
+        var bt = $("conta-enviar");
+        if (bt){
+          bt.textContent = "Confirmar e entrar";
+          bt.onclick = function(){
+            QF.concluirLoginCom($("conta-email").value).then(function(){
+              bt.textContent = "Mandar o link"; bt.onclick = null;
+            }, function(){
+              contaErro("conta-err", "Esse e-mail não foi o que pediu o link.");
+            });
+          };
+        }
+      }
     });
   }
 

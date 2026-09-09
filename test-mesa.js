@@ -13,7 +13,7 @@ const injected = src.slice(0, src.lastIndexOf("})();")) +
   "globalThis.__t={CriarMesa:CriarMesa,encodeMesa5:encodeMesa5,decodeMesa5:decodeMesa5," +
   "checksum5:checksum5,parseMesaHash:parseMesaHash,linkMesa:linkMesa,maskLabel:maskLabel," +
   "palavrasHTML:palavrasHTML,fitWord:fitWord," +
-  "wordFor:wordFor,cardsFor:cardsFor,senhaConfere:senhaConfere,NIVEIS:NIVEIS,ALL_MASK:ALL_MASK,BR_MASK:BR_MASK};})();";
+  "wordFor:wordFor,cardsFor:cardsFor,senhaConfere:senhaConfere,NIVEIS:NIVEIS,TEMAS:TEMAS,ALL_MASK:ALL_MASK,BR_MASK:BR_MASK};})();";
 const script = new vm.Script(injected, { filename: "quem-sou-eu-online.html" });
 
 /* ---- DOM mínimo (só p/ o app carregar) ---- */
@@ -52,72 +52,120 @@ const ok = (c, m) => { if (!c) { fails++; console.log("  FALHA: " + m); } };
 
 const base = makeDevice("base").T;
 
-/* ============ código de 5 números (só nível+pessoas+semente) ============ */
+/* ============ código de 5 números (tema · nível · pessoas · semente) ============
+   O formato mudou: antes o código guardava só nível/pessoas/semente e os
+   baralhos viajavam no link; agora ele guarda o ÍNDICE DE UM TEMA, e o
+   link não carrega mais máscara. */
 function testeCodigo() {
-  let n1 = 0, ruins = 0;
-  for (let nivel = 0; nivel < 3; nivel++)
-    for (let n = 2; n <= 16; n++)
-      for (let seed = 0; seed < 16; seed++) {
-        const code = base.encodeMesa5(nivel, n, seed);
-        if (!/^[0-9]{5}$/.test(code)) { ruins++; continue; }
-        const d = base.decodeMesa5(code);
-        n1++;
-        if (!d || d.nivel !== nivel || d.n !== n || d.seed !== seed) ruins++;
-      }
-  ok(ruins === 0, "código: " + n1 + " combinações (nível·pessoas·semente), " + ruins + " roundtrips errados");
-  ok(/^[0-9]{5}$/.test(base.encodeMesa5(0, 8, 3)), "código sempre 5 dígitos");
+  const T = base.TEMAS;
+  let total = 0, ruins = 0;
+  for (let tema = 0; tema < T.length; tema++)
+    for (let nivel = 0; nivel < 3; nivel++)
+      for (let n = 2; n <= 16; n++)
+        for (let seed = 0; seed < 4; seed++) {
+          const code = base.encodeMesa5(tema, nivel, n, seed);
+          if (!/^[0-9]{5}$/.test(code)) { ruins++; continue; }
+          const d = base.decodeMesa5(code);
+          if (!d) continue;             // combinação sem cartas suficientes
+          total++;
+          if (d.tema !== tema || d.nivel !== nivel || d.n !== n || d.seed !== seed) ruins++;
+          if (d.mask !== T[tema].mask) ruins++;
+        }
+  ok(ruins === 0, "código: " + total + " combinações válidas, " + ruins + " roundtrips errados");
+  ok(/^[0-9]{5}$/.test(base.encodeMesa5(0, 0, 8, 3)), "código: sempre 5 dígitos");
 
-  // erro de 1 dígito quase nunca passa como outro jogo válido (checksum de 6 bits)
+  const c16 = base.encodeMesa5(0, 0, 16, 1);
+  ok(base.decodeMesa5(c16) && base.decodeMesa5(c16).n === 16, "código: aceita 16 pessoas");
+  ok(base.decodeMesa5("abc") === null && base.decodeMesa5("123456") === null,
+     "código: não-5-dígitos = null");
+  ok(base.decodeMesa5(base.encodeMesa5(99, 0, 4, 0)) === null ||
+     base.decodeMesa5(base.encodeMesa5(99, 0, 4, 0)).tema < base.TEMAS.length,
+     "código: tema fora da lista não decodifica pra tema inexistente");
+
+  /* Quantos dos 65536 números possíveis são jogo válido. Quanto maior,
+     mais fácil um engano virar partida errada em vez de erro. */
+  let validos = 0;
+  for (let x = 0; x <= 65535; x++) if (base.decodeMesa5(String(x).padStart(5, "0"))) validos++;
+  const densidade = validos / 65536;
+  ok(densidade < 0.07, "código: " + (densidade * 100).toFixed(2) + "% dos números são jogo válido");
+
+  /* ---------------------------------------------------------------
+     REGRESSÃO CONHECIDA, medida e registrada de propósito.
+
+     Quando o Modo Mesa passou a guardar TEMA no código, 5 bits foram
+     para esse campo e o checksum caiu de 6 bits para 3. Resultado: um
+     erro de um dígito só é detectado em ~93% das vezes. Nos outros
+     ~7% ele decodifica como OUTRA partida válida — ninguém vê erro, e
+     as pessoas na mesa recebem cartas que não combinam entre si.
+
+     O limite abaixo descreve o que o código faz HOJE. Não é uma meta:
+     é uma trava para o número não piorar sem alguém perceber. Se um
+     dia o formato ganhar mais um dígito ou um bit a mais de checksum,
+     baixe este limite junto.
+     --------------------------------------------------------------- */
   let miss = 0, tries = 0;
-  for (let i = 0; i < 40000; i++) {
-    const nivel = i % 3, n = 2 + (i % 15), seed = i % 16;
-    const c = base.encodeMesa5(nivel, n, seed);
-    const p = i % 5, dig = "" + (i % 10);
+  for (let i = 0; i < 60000; i++) {
+    const tema = i % T.length, nivel = i % 3, n = 2 + (i % 15), seed = i % 4;
+    const c = base.encodeMesa5(tema, nivel, n, seed);
+    if (!base.decodeMesa5(c)) continue;
+    const p = i % 5, dig = String(i % 10);
     if (dig === c[p]) continue;
     const bad = c.slice(0, p) + dig + c.slice(p + 1);
     tries++;
-    const dd = base.decodeMesa5(bad);
-    if (dd && (dd.nivel !== nivel || dd.n !== n || dd.seed !== seed)) miss++;
+    const d = base.decodeMesa5(bad);
+    if (d && (d.tema !== tema || d.nivel !== nivel || d.n !== n || d.seed !== seed)) miss++;
   }
-  ok(miss / tries < 0.04, "código: erro de 1 dígito vira jogo diferente em " + (miss / tries * 100).toFixed(2) + "% (esperado < 4%)");
-  ok(base.decodeMesa5("abc") === null && base.decodeMesa5("123456") === null, "código: não-5-dígitos = null");
-  const c16 = base.encodeMesa5(0, 16, 1);
-  ok(base.decodeMesa5(c16) && base.decodeMesa5(c16).n === 16, "código: aceita 16 pessoas");
+  const taxa = miss / tries;
+  ok(taxa < 0.08, "código: erro de 1 dígito vira outro jogo em " +
+     (taxa * 100).toFixed(2) + "% (trava em 8%, checksum de 3 bits)");
 }
 
-/* ============ link: baralhos livres vão no link (base36) ============ */
+/* ============ link: só o código e os nomes ============
+   A máscara saiu do link — o tema já está dentro do código. O separador
+   dos nomes é "~". */
 function testeLink() {
-  const code = base.encodeMesa5(1, 4, 2);
-  const mask = 8 | 16 | 32768;                    // Cinema + Séries + História (livre)
-  const link = base.linkMesa(code, mask, ["Dani", "Bebel", "Zé Ramalho", "Rafa"]);
-  ok(link.indexOf("#j" + code + "-") >= 0, "link: hash 'j' + 5 números + '-' + máscara");
+  const tema = 5;                                   // Desenhos
+  const code = base.encodeMesa5(tema, 1, 4, 2);
+  const link = base.linkMesa(code, ["Dani", "Bebel", "Zé Ramalho", "Rafa"]);
+
+  ok(link.indexOf("#j" + code) >= 0, "link: hash é 'j' + os 5 números");
+  ok(link.indexOf("-") < 0 || link.indexOf("#j" + code + "-") < 0,
+     "link: não carrega mais máscara de baralhos");
+
   const p = base.parseMesaHash(link.split("#")[1]);
-  ok(p && p.codigo === code, "link: código de 5 dígitos extraído do hash");
-  ok(p.mask === mask, "link: máscara de baralhos livre veio do link (base36)");
-  ok(p.nivel === 1 && p.n === 4 && p.soCodigo === false, "link: nível/pessoas do código, soCodigo=false");
+  ok(p && p.codigo === code, "link: código extraído do hash");
+  ok(p.tema === tema && p.mask === base.TEMAS[tema].mask, "link: tema veio do código, não do link");
+  ok(p.nivel === 1 && p.n === 4 && p.seed === 2, "link: nível, pessoas e semente do código");
   ok(p.nicks.length === 4 && p.nicks[2] === "Zé Ramalho", "link: nomes decodificados (acento incluso)");
 
-  // só o número (sem link) -> todos os baralhos, soCodigo=true
-  const bare = base.parseMesaHash(code);
-  ok(bare && bare.mask === base.ALL_MASK && bare.soCodigo === true, "número pelado -> todos os baralhos + soCodigo");
-  ok(base.linkMesa(code, base.ALL_MASK, []).indexOf("-") < 0, "link: máscara 'Tudo' não polui o hash");
-
+  const pelado = base.parseMesaHash(code);
+  ok(pelado && pelado.codigo === code && pelado.nicks.length === 0,
+     "link: número pelado funciona, sem nomes");
+  ok(base.parseMesaHash("j" + code) !== null, "link: com ou sem o 'j' na frente");
+  ok(base.linkMesa(code, []).indexOf("~") < 0, "link: sem nomes, sem '~' no hash");
   ok(base.parseMesaHash("abcde") === null, "link: não-numérico = null");
-  const pv = base.parseMesaHash("j" + code + "-" + mask.toString(36) + "~Dani~~Rafa~");
-  ok(pv.nicks[0] === "Dani" && pv.nicks[1] === "" && pv.nicks[2] === "Rafa", "link: lacuna no meio vira slot sem nome");
-  const Mv = base.CriarMesa({ codigo: code, mask: mask, nivel: 1, n: 4, seed: 2, nicks: ["Dani", "", "Rafa", ""] });
+
+  const pv = base.parseMesaHash("j" + code + "~Dani~~Rafa~");
+  ok(pv.nicks[0] === "Dani" && pv.nicks[1] === "" && pv.nicks[2] === "Rafa",
+     "link: lacuna no meio vira slot sem nome (o índice é o slot)");
+
+  const Mv = base.CriarMesa({ codigo: code, mask: base.TEMAS[tema].mask, nivel: 1, n: 4,
+                              seed: 2, nicks: ["Dani", "", "Rafa", ""] });
   Mv.retomar(); Mv.escolherSlot(2);
-  ok(Mv.temNomes() === true && Mv.nick === "Jogador 2", "mesa: slot sem nome vira 'Jogador N', mas a mesa ainda 'tem nomes'");
-  const vm = Mv.vm();
-  ok(vm.membros[0].nick === "Dani" && vm.membros[3].nick === "Jogador 4", "mesa: painel mistura nomes e números");
+  ok(Mv.temNomes() === true && Mv.nick === "Jogador 2",
+     "mesa: slot sem nome vira 'Jogador N', mas a mesa ainda 'tem nomes'");
+  const vmv = Mv.vm();
+  ok(vmv.membros[0].nick === "Dani" && vmv.membros[3].nick === "Jogador 4",
+     "mesa: painel mistura nomes e números");
 }
 
 /* ============ fluxo com N jogadores ============ */
 function cenario(N, comNomes) {
-  const mask = 1 | 2 | 64;                     // Desenhos + Anime + Bichos (seleção livre)
+  const tema = 0;                              // "Tudo" — o baralho inteiro
+  const mask = base.TEMAS[tema].mask;
   const nivel = 0;
-  const seed = N % 16;
-  const code = base.encodeMesa5(nivel, N, seed);
+  const seed = N % 4;                          // a semente agora tem 2 bits
+  const code = base.encodeMesa5(tema, nivel, N, seed);
   const nomes = comNomes ? Array.from({ length: N }, (_, i) => "P" + (i + 1)) : [];
   const payload = { codigo: code, mask, nivel, n: N, seed, nicks: nomes };
 
@@ -227,9 +275,9 @@ function testeFit() {
 console.log("MODO MESA — determinístico, sem servidor\n");
 
 let a = fails; testeCodigo();
-console.log((fails === a ? "  ok  " : " FALHA") + "  código de 5 números (nível·pessoas·semente, checksum 6 bits)");
+console.log((fails === a ? "  ok  " : " FALHA") + "  código de 5 números (tema·nível·pessoas·semente, checksum 3 bits)");
 a = fails; testeLink();
-console.log((fails === a ? "  ok  " : " FALHA") + "  link: baralhos livres (base36) + nomes; número pelado = todos");
+console.log((fails === a ? "  ok  " : " FALHA") + "  link: código + nomes (o tema já vem dentro do código)");
 a = fails; testeFit();
 console.log((fails === a ? "  ok  " : " FALHA") + "  carta: palavra por linha + fonte adaptativa");
 
