@@ -300,7 +300,7 @@
         <p class="eyebrow">Jogo de mesa para celular</p>
         <h1 class="logo">Quem<br>sou<em>eu?</em></h1>
       </div>
-      <p class="lede">Um código vale a noite inteira. Cada pessoa abre este mesmo link, digita o código e encosta o celular na testa.</p>
+      <p class="lede">Celular na testa e ninguém te conta quem tu é. A mesa só dá dica — e zoa a tua cara até cair a ficha.</p>
       <p class="note" id="home-tally"></p>
       <div id="home-salas" hidden>
         <p class="eyebrow" style="margin-bottom:8px">Suas salas</p>
@@ -308,6 +308,8 @@
       </div>
     </div>
     <div class="foot">
+      <button class="btn" id="go-entrar" hidden>Entrar</button>
+      <button class="btn ghost" id="go-criar-conta" hidden>Criar conta</button>
       <button class="btn" id="go-create">Criar jogo</button>
       <button class="btn ghost" id="go-join">Entrar com código</button>
       <button class="linkbtn" id="go-mesa" hidden>Criar jogo pra galera de fora</button>
@@ -2333,8 +2335,17 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   /* ---- ligações ---- */
   function ligarConta(){
+    function abrirConta(modo){
+      CONTA.modo = modo;
+      show("s-conta");
+      pintarConta();
+    }
     var go = $("go-conta");
-    if (go) go.addEventListener("click", function(){ show("s-conta"); pintarConta(); });
+    if (go) go.addEventListener("click", function(){ abrirConta(CONTA.modo || "login"); });
+    var gEntrar = $("go-entrar");
+    if (gEntrar) gEntrar.addEventListener("click", function(){ abrirConta("login"); });
+    var gCriar = $("go-criar-conta");
+    if (gCriar) gCriar.addEventListener("click", function(){ abrirConta("cadastro"); });
 
     ligarOlho("login-olho", "login-senha");
     ligarOlho("cad-olho", "cad-senha");
@@ -2487,18 +2498,39 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   }
 
   function pintarHome(){
-    /* O botão de conta só existe quando o Firebase respondeu. Rodando
-       como Artifact, ou offline, ele nem aparece — não adianta oferecer
-       login onde não há como logar. */
+    /* A home tem duas caras.
+
+       Sem conta: só Entrar e Criar conta. Mostrar "Criar jogo" pra quem
+       não pode criar jogo é prometer o que não se cumpre — a pessoa toca,
+       cai no cadastro, e a primeira impressão do app é uma porta fechada.
+
+       Com conta: as portas do jogo, e o atalho pro perfil.
+
+       Sem Firebase (rodando como Artifact, ou offline) não existe conta
+       possível, então a home fica como sempre foi. */
+    var temConta = !!CONTA.api;
+    var logado = !!(CONTA.ident && CONTA.perfil);
+    var deslogado = temConta && !logado;
+
+    var bEntrar = $("go-entrar"), bCriar = $("go-criar-conta");
+    if (bEntrar) bEntrar.hidden = !deslogado;
+    if (bCriar)  bCriar.hidden  = !deslogado;
+
+    $("go-create").hidden = deslogado;
+    $("go-join").hidden = deslogado;
+    /* quem ativou o modo mesa foi ativarOnline; aqui só some com ele
+       enquanto não há conta, sem ligar de volta por conta própria */
+    if (deslogado) $("go-mesa").hidden = true;
+
     var bc = $("go-conta");
     if (bc){
-      bc.hidden = !CONTA.api;
+      bc.hidden = !temConta || deslogado;
       bc.textContent = !CONTA.ident ? "Entrar ou criar conta"
                      : !CONTA.perfil ? "Terminar meu cadastro"
                      : CONTA.perfil.nick + " · amigos e ranking";
     }
 
-    var salas = ONLINE ? lerSalas() : [];
+    var salas = deslogado ? [] : (ONLINE ? lerSalas() : []);
     var wrap = $("home-salas"), lst = $("home-salas-list");
     if (!salas.length){ wrap.hidden = true; return; }
     wrap.hidden = false;

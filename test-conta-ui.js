@@ -210,8 +210,23 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   F._entrar(null);
   await settle();
 
-  /* ===== 1. login obrigatório ===== */
+  /* ===== 1. a home deslogada não oferece o que não pode cumprir ===== */
   ok(!!A.ui.CONTA.api, "CONTAS ligado no db");
+  ok(g("go-create").hidden === true, "sem conta, 'Criar jogo' não aparece");
+  ok(g("go-join").hidden === true, "sem conta, 'Entrar com código' não aparece");
+  ok(g("go-mesa").hidden === true, "sem conta, o modo pra galera de fora também some");
+  ok(g("go-entrar").hidden === false, "sem conta, aparece 'Entrar'");
+  ok(g("go-criar-conta").hidden === false, "sem conta, aparece 'Criar conta'");
+  ok(g("go-conta").hidden === true, "e o atalho de perfil some, pra não duplicar");
+
+  click("go-criar-conta");
+  ok(tela() === "s-conta" && g("conta-cadastro").hidden === false,
+     "'Criar conta' abre direto no cadastro");
+  click("go-entrar");
+  ok(tela() === "s-conta" && g("conta-login").hidden === false,
+     "'Entrar' abre direto no login");
+
+  /* ===== 1b. e as portas continuam trancadas por dentro ===== */
   click("go-create");
   await settle();
   ok(tela() === "s-conta", "criar jogo sem conta cai na tela de conta, foi pra " + tela());
@@ -367,6 +382,11 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   ok(g("conta-perfil-nome").textContent === "Ana Souza", "perfil mostra o nome completo");
 
   /* ===== 11. com conta, as portas abrem ===== */
+  ok(g("go-create").hidden === false, "com conta, 'Criar jogo' volta pra home");
+  ok(g("go-join").hidden === false, "e 'Entrar com código' também");
+  ok(g("go-entrar").hidden === true, "e os botões de conta somem");
+  ok(g("go-criar-conta").hidden === true, "os dois");
+  ok(g("go-conta").hidden === false, "o atalho de perfil aparece no lugar");
   click("go-create");
   await settle();
   ok(tela() !== "s-conta", "com conta, criar jogo não cai mais na tela de conta");
