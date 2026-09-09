@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "koe-qm-sou-eu",
     "public": "public",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
