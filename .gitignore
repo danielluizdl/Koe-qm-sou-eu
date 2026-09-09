@@ -1,9 +1,10 @@
-node_modules/
-dist/
-build/
-public/
+*.log
+.DS_Store
 .firebase/
 .firebaserc
-.DS_Store
 Thumbs.db
-*.log
+build/
+dist/
+home-deslogada.png
+node_modules/
+public/

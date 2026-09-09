@@ -220,28 +220,25 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   ok(g("go-conta").hidden === true, "e o atalho de perfil some, pra não duplicar");
 
   click("go-criar-conta");
-  ok(tela() === "s-conta" && g("conta-cadastro").hidden === false,
-     "'Criar conta' abre direto no cadastro");
+  ok(tela() === "s-cadastro", "'Criar conta' abre a tela de cadastro, foi pra " + tela());
   click("go-entrar");
-  ok(tela() === "s-conta" && g("conta-login").hidden === false,
-     "'Entrar' abre direto no login");
+  ok(tela() === "s-login", "'Entrar' abre a tela de login, foi pra " + tela());
+  ok(g("cad-nome") !== g("login-email"), "as duas telas são documentos separados");
 
   /* ===== 1b. e as portas continuam trancadas por dentro ===== */
   click("go-create");
   await settle();
-  ok(tela() === "s-conta", "criar jogo sem conta cai na tela de conta, foi pra " + tela());
+  ok(tela() === "s-login", "criar jogo sem conta cai no login, foi pra " + tela());
   click("go-join");
   await settle();
-  ok(tela() === "s-conta", "entrar com código sem conta também, foi pra " + tela());
-  ok(g("conta-login").hidden === false, "abre no modo Entrar");
-  ok(g("login-ok").hidden === false && g("cad-ok").hidden === true, "só o botão Entrar");
-  ok(g("conta-trocar").textContent === "Criar uma conta", "oferece criar conta");
+  ok(tela() === "s-login", "entrar com código sem conta também, foi pra " + tela());
 
-  /* ===== 2. alternar entre entrar e cadastrar ===== */
-  click("conta-trocar");
-  ok(g("conta-cadastro").hidden === false && g("conta-login").hidden === true, "vai pro cadastro");
-  ok(g("cad-ok").hidden === false && g("login-ok").hidden === true, "botão vira Criar conta");
-  ok(g("conta-trocar").textContent === "Já tenho conta", "e oferece voltar pro login");
+  /* ===== 2. alternar entre as duas telas ===== */
+  click("ir-cadastro");
+  ok(tela() === "s-cadastro", "do login dá pra ir pro cadastro, foi pra " + tela());
+  click("ir-login");
+  ok(tela() === "s-login", "e voltar, foi pra " + tela());
+  click("ir-cadastro");
 
   /* ===== 3. todos os campos são obrigatórios ===== */
   click("cad-ok");
@@ -314,10 +311,11 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   click("cad-ok");
   await settle();
   ok(!!A.ui.CONTA.perfil, "conta criada");
+  ok(tela() !== "s-cadastro", "e sai da tela de cadastro, foi pra " + tela());
   ok(A.ui.CONTA.perfil.nick === "an", "com o apelido digitado");
   ok(A.ui.CONTA.perfil.nome === "Ana Souza", "e o nome completo");
   ok(F._verificacoes.length === 1, "e-mail de confirmação disparado");
-  ok(g("conta-perfil").hidden === false, "mostra o perfil");
+  ok(g("conta-perfil-nick").textContent === "an", "perfil traz o apelido");
 
   const dump = DB._dump();
   ok(dump["perfis/uid-1"] && dump["perfis/uid-1"].email === undefined,
@@ -334,8 +332,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   click("conta-sair");
   await settle();
   ok(A.ui.CONTA.ident === null, "saiu da conta");
-  click("go-conta");
-  click("conta-trocar");
+  click("go-criar-conta");
   preencher("cad-nome", "Bia Lima");
   preencher("cad-nick", "AN");                 // mesma chave do "an"
   preencher("cad-email", "bia@exemplo.com");
@@ -354,8 +351,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   /* ===== 9. e-mail já cadastrado ===== */
   click("conta-sair");
   await settle();
-  click("go-conta");
-  click("conta-trocar");
+  click("go-criar-conta");
   preencher("cad-nome", "Caio Dias");
   preencher("cad-nick", "caio");
   preencher("cad-email", "ana@exemplo.com");   // já usado
@@ -367,7 +363,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
      "e-mail repetido avisa, veio: " + g("cad-err").textContent);
 
   /* ===== 10. entrar com conta existente ===== */
-  click("conta-trocar");
+  click("ir-login");
   preencher("login-email", "ana@exemplo.com");
   preencher("login-senha", "999999");
   click("login-ok");
@@ -379,6 +375,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   click("login-ok");
   await settle();
   ok(A.ui.CONTA.perfil && A.ui.CONTA.perfil.nick === "an", "senha certa entra e traz o perfil");
+  ok(tela() === "s-conta", "e vai pra tela de perfil, foi pra " + tela());
   ok(g("conta-perfil-nome").textContent === "Ana Souza", "perfil mostra o nome completo");
 
   /* ===== 11. com conta, as portas abrem ===== */
@@ -395,6 +392,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   click("go-conta");
   click("conta-sair");
   await settle();
+  click("go-entrar");
   preencher("login-email", "ana@exemplo.com");
   click("login-esqueci");
   await settle();

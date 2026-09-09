@@ -7,6 +7,10 @@
    node test-tudo.js */
 const { execFileSync } = require("child_process");
 
+const { execSync } = require("child_process");
+/* o teste de navegador precisa da pagina sem o boot do Firebase */
+try { execSync(process.execPath + " build.js", { cwd: __dirname, env: Object.assign({}, process.env, { SEM_BOOT: "1" }), stdio: "ignore" }); } catch(e){}
+
 const suites = [
   ["baralho e código de 7 chars",  "test.js",                   {}],
   ["modo mesa",                    "test-mesa.js",              {}],
@@ -14,6 +18,8 @@ const suites = [
   ["salas — backend firestore",    "test-salas.js",             { DB: "firestore" }],
   ["salas — interface",            "test-salas-ui.js",          {}],
   ["conta e amigos — interface",   "test-conta-ui.js",          {}],
+  ["css: hidden de verdade",       "test-css.js",               {}],
+  ["navegador de verdade",         "test-navegador.js",         {}],
   ["pontuação",                    "test-pontuacao.js",         {}],
   ["adaptador firestore",          "test-firestore-adapter.js", {}],
   ["contas — backend capability",  "test-contas.js",            {}],

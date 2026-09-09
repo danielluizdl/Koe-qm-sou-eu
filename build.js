@@ -24,6 +24,14 @@ const SCRIPTS = [
   "firebase-boot.js"
 ];
 
+/* SEM_BOOT=1 gera uma pagina identica, menos o bootstrap do Firebase.
+   Serve pro teste de navegador: sem ela, firebase-boot.js sobrescreve
+   window.QSE_FIREBASE e o teste acaba falando com o Firebase de
+   verdade, medindo a tela antes de a rede responder. */
+const SEM_BOOT = !!process.env.SEM_BOOT;
+const SAIDA_NOME = SEM_BOOT ? "index-teste.html" : "index.html";
+const USADOS = SEM_BOOT ? SCRIPTS.filter(f => f !== "firebase-boot.js") : SCRIPTS;
+
 function ler(f){ return fs.readFileSync(path.join(RAIZ, f), "utf8"); }
 
 /* Um bloco de script termina no PRIMEIRO fechamento literal, mesmo
@@ -49,7 +57,7 @@ const mTitulo = jogo.match(/<title>([\s\S]*?)<\/title>/i);
 const titulo = mTitulo ? mTitulo[1].trim() : "Quem Sou Eu";
 const corpo = mTitulo ? jogo.replace(mTitulo[0], "") : jogo;
 
-const embutidos = SCRIPTS.map(function(f){
+const embutidos = USADOS.map(function(f){
   const texto = ler(f);
   conferirEmbutivel(f, texto);
   return "<!-- " + f + " -->\n<script>\n" + texto + "\n</" + "script>";
@@ -87,12 +95,12 @@ const manifest = {
 };
 
 fs.mkdirSync(SAIDA, { recursive: true });
-fs.writeFileSync(path.join(SAIDA, "index.html"), doc, "utf8");
+fs.writeFileSync(path.join(SAIDA, SAIDA_NOME), doc, "utf8");
 fs.writeFileSync(path.join(SAIDA, "manifest.webmanifest"),
                  JSON.stringify(manifest, null, 2), "utf8");
 
 const kb = n => (n / 1024).toFixed(1) + " KB";
-console.log("public/index.html          " + kb(Buffer.byteLength(doc)));
-SCRIPTS.forEach(f => console.log("  + " + f.padEnd(24) + kb(Buffer.byteLength(ler(f)))));
+console.log("public/" + SAIDA_NOME + "  " + kb(Buffer.byteLength(doc)));
+USADOS.forEach(f => console.log("  + " + f.padEnd(24) + kb(Buffer.byteLength(ler(f)))));
 console.log("  + " + JOGO.padEnd(24) + kb(Buffer.byteLength(jogo)));
 console.log("public/manifest.webmanifest");

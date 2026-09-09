@@ -33,6 +33,19 @@
   }
 
   *{box-sizing:border-box}
+
+  /* O navegador esconde [hidden] com `display:none`, mas isso vive na
+     folha DELE — e qualquer regra nossa com `display` ganha, porque
+     estilo do autor vence estilo do navegador, independente de
+     especificidade. Como .btn, .mid, .campo e .rows declaram display,
+     o atributo hidden não fazia efeito nenhum neles: os botões da home
+     apareciam todos, e as telas de entrar e cadastrar se empilhavam.
+
+     Esta linha devolve ao `hidden` o significado que ele deveria ter.
+     Sem ela, esconder qualquer coisa exigiria lembrar de checar o
+     display de cada classe — e um dia alguém esqueceria. */
+  [hidden]{display:none !important}
+
   html{-webkit-text-size-adjust:100%}
   body{
     margin:0; font-family:var(--f-ui); color:var(--ink);
@@ -622,11 +635,9 @@
     <p class="note" id="hist-vazio" hidden>Nenhuma partida terminada ainda. Joguem a primeira!</p>
   </section>
 
-  <section class="screen" id="s-conta">
-    <div class="topbar"><button class="back" id="conta-back" data-back="s-home">← Voltar</button></div>
-
-    <!-- ENTRAR -->
-    <div class="mid" id="conta-login" hidden>
+  <section class="screen" id="s-login">
+    <div class="topbar"><button class="back" data-back="s-home">← Voltar</button></div>
+    <div class="mid">
       <div class="stack" style="gap:8px">
         <p class="eyebrow">Sua conta</p>
         <h2>Entrar</h2>
@@ -634,7 +645,7 @@
       <div class="campo">
         <label for="login-email">E-mail</label>
         <input id="login-email" class="field" type="email" inputmode="email"
-               autocomplete="email" autocorrect="off" spellcheck="false">
+               autocomplete="email" autocorrect="off" spellcheck="false" autocapitalize="none">
       </div>
       <div class="campo">
         <label for="login-senha">Senha</label>
@@ -651,9 +662,15 @@
       <p class="err" id="login-err" role="status"></p>
       <button class="linkbtn" id="login-esqueci">Esqueci minha senha</button>
     </div>
+    <div class="foot">
+      <button class="btn" id="login-ok">Entrar</button>
+      <button class="linkbtn" id="ir-cadastro">Não tenho conta ainda</button>
+    </div>
+  </section>
 
-    <!-- CRIAR CONTA -->
-    <div class="mid" id="conta-cadastro" hidden>
+  <section class="screen" id="s-cadastro">
+    <div class="topbar"><button class="back" data-back="s-home">← Voltar</button></div>
+    <div class="mid">
       <div class="stack" style="gap:8px">
         <p class="eyebrow">Sua conta</p>
         <h2>Criar conta</h2>
@@ -676,7 +693,7 @@
       <div class="campo">
         <label for="cad-email">E-mail</label>
         <input id="cad-email" class="field" type="email" inputmode="email"
-               autocomplete="email" autocorrect="off" spellcheck="false">
+               autocomplete="email" autocorrect="off" spellcheck="false" autocapitalize="none">
         <p class="erro" id="cad-email-erro"></p>
       </div>
 
@@ -711,9 +728,15 @@
 
       <p class="err" id="cad-err" role="status"></p>
     </div>
+    <div class="foot">
+      <button class="btn" id="cad-ok">Criar conta</button>
+      <button class="linkbtn" id="ir-login">Já tenho conta</button>
+    </div>
+  </section>
 
-    <!-- PERFIL -->
-    <div class="mid" id="conta-perfil" hidden>
+  <section class="screen" id="s-conta">
+    <div class="topbar"><button class="back" data-back="s-home">← Voltar</button></div>
+    <div class="mid">
       <div class="stack" style="gap:8px">
         <p class="eyebrow">Sua conta</p>
         <h2 id="conta-perfil-nick"></h2>
@@ -723,13 +746,9 @@
       <div class="rows" id="conta-numeros"></div>
       <p class="note" id="conta-perfil-vazio" hidden>Você ainda não terminou nenhuma partida.</p>
     </div>
-
     <div class="foot">
-      <button class="btn" id="login-ok" hidden>Entrar</button>
-      <button class="btn" id="cad-ok" hidden>Criar conta</button>
-      <button class="btn" id="conta-amigos" hidden>Meus amigos</button>
-      <button class="linkbtn" id="conta-trocar" hidden></button>
-      <button class="linkbtn" id="conta-sair" hidden>Sair da conta</button>
+      <button class="btn" id="conta-amigos">Meus amigos</button>
+      <button class="linkbtn" id="conta-sair">Sair da conta</button>
     </div>
   </section>
 
@@ -2152,51 +2171,55 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     return algum ? null : v;
   }
 
-  /* ---- pintura ---- */
+  /* ---- pintura ----
+     Entrar, criar conta e perfil agora são TELAS diferentes. Esta
+     função só decide qual delas o estado atual pede, e mostra a que
+     está aberta. Quem chama não precisa saber de nenhuma delas. */
+  function telaDaConta(){
+    if (!CONTA.ident) return CONTA.modo === "cadastro" ? "s-cadastro" : "s-login";
+    if (!CONTA.perfil) return "s-cadastro";   // conta existe, falta o perfil
+    return "s-conta";
+  }
+
   function pintarConta(){
-    var login = $("conta-login"), cad = $("conta-cadastro"), perfil = $("conta-perfil");
-    if (!login) return;
-    var bLogin = $("login-ok"), bCad = $("cad-ok");
-    var bAmigos = $("conta-amigos"), bTrocar = $("conta-trocar"), bSair = $("conta-sair");
+    var alvo = telaDaConta();
 
-    login.hidden = cad.hidden = perfil.hidden = true;
-    bLogin.hidden = bCad.hidden = bAmigos.hidden = bTrocar.hidden = bSair.hidden = true;
-
-    if (!CONTA.ident){
-      if (CONTA.modo === "cadastro"){
-        cad.hidden = false; bCad.hidden = false;
-        bTrocar.hidden = false; bTrocar.textContent = "Já tenho conta";
-      } else {
-        login.hidden = false; bLogin.hidden = false;
-        bTrocar.hidden = false; bTrocar.textContent = "Criar uma conta";
-      }
-      return;
-    }
-
-    /* Logado mas sem perfil: acontece se o cadastro cair entre criar a
-       conta no Auth e gravar o perfil. Volta pro formulário com o
-       e-mail já preenchido e travado. */
-    if (!CONTA.perfil){
-      CONTA.modo = "cadastro";
-      cad.hidden = false; bCad.hidden = false; bSair.hidden = false;
+    if (alvo === "s-cadastro"){
+      var faltaPerfil = !!(CONTA.ident && !CONTA.perfil);
       var ce = $("cad-email");
-      ce.value = CONTA.ident.email || ce.value;
-      ce.disabled = true;
-      /* A senha já existe no Auth; aqui só falta o perfil. Some com os
-         campos e preenche com algo válido pra validação não travar. */
-      $("cad-senha").value = "000000"; $("cad-senha2").value = "000000";
-      $("cad-campo-senha").hidden = true;
-      $("cad-campo-senha2").hidden = true;
-      return;
+      if (ce){
+        /* Cadastro interrompido: a conta do Auth já existe e a senha
+           também. Some com os campos de senha e trava o e-mail, pra
+           pedir só o que de fato falta. */
+        if (faltaPerfil){
+          ce.value = CONTA.ident.email || ce.value;
+          ce.disabled = true;
+          $("cad-senha").value = "000000";
+          $("cad-senha2").value = "000000";
+        } else {
+          ce.disabled = false;
+        }
+        $("cad-campo-senha").hidden = faltaPerfil;
+        $("cad-campo-senha2").hidden = faltaPerfil;
+      }
     }
 
-    perfil.hidden = false;
-    bAmigos.hidden = bSair.hidden = false;
-    $("conta-perfil-nick").textContent = CONTA.perfil.nick;
-    $("conta-perfil-nome").textContent = CONTA.perfil.nome || "";
-    $("conta-perfil-email").textContent = CONTA.perfil.email || "";
+    if (alvo === "s-conta" && CONTA.perfil) pintarPerfil();
 
-    var p = CONTA.perfil, jogou = (p.partidas || 0) > 0;
+    /* Só troca de tela se já estivermos numa das telas de conta ou na
+       home. Trocar do meio de uma partida seria hostil. */
+    var atual = telaVisivel();
+    var telasConta = { "s-login":1, "s-cadastro":1, "s-conta":1 };
+    if (telasConta[atual] && atual !== alvo) show(alvo);
+  }
+
+  function pintarPerfil(){
+    var p = CONTA.perfil;
+    if (!p || !$("conta-perfil-nick")) return;
+    $("conta-perfil-nick").textContent = p.nick;
+    $("conta-perfil-nome").textContent = p.nome || "";
+    $("conta-perfil-email").textContent = p.email || "";
+    var jogou = (p.partidas || 0) > 0;
     $("conta-perfil-vazio").hidden = jogou;
     var box = $("conta-numeros");
     box.innerHTML = "";
@@ -2232,7 +2255,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   function exigirConta(oQue){
     if (contaCompleta()){ oQue(); return; }
     CONTA.apos = oQue;
-    show("s-conta");
+    CONTA.modo = "login";
+    show("s-login");
     pintarConta();
   }
 
@@ -2336,27 +2360,24 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   /* ---- ligações ---- */
   function ligarConta(){
     function abrirConta(modo){
-      CONTA.modo = modo;
-      show("s-conta");
+      if (modo) CONTA.modo = modo;
+      show(telaDaConta());
       pintarConta();
     }
     var go = $("go-conta");
-    if (go) go.addEventListener("click", function(){ abrirConta(CONTA.modo || "login"); });
+    if (go) go.addEventListener("click", function(){ abrirConta(null); });
     var gEntrar = $("go-entrar");
     if (gEntrar) gEntrar.addEventListener("click", function(){ abrirConta("login"); });
     var gCriar = $("go-criar-conta");
     if (gCriar) gCriar.addEventListener("click", function(){ abrirConta("cadastro"); });
+    var irCad = $("ir-cadastro");
+    if (irCad) irCad.addEventListener("click", function(){ abrirConta("cadastro"); });
+    var irLog = $("ir-login");
+    if (irLog) irLog.addEventListener("click", function(){ abrirConta("login"); });
 
     ligarOlho("login-olho", "login-senha");
     ligarOlho("cad-olho", "cad-senha");
     ligarOlho("cad-olho2", "cad-senha2");
-
-    var trocar = $("conta-trocar");
-    if (trocar) trocar.addEventListener("click", function(){
-      CONTA.modo = CONTA.modo === "cadastro" ? "login" : "cadastro";
-      txt("login-err", ""); txt("cad-err", "");
-      pintarConta();
-    });
 
     /* valida ao sair do campo: erro na hora, não no fim */
     var aoSair = [
@@ -2461,6 +2482,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       QF.sair().then(function(){
         CONTA.modo = "login";
         $("cad-email").disabled = false;
+        show("s-home");
         toast("Você saiu da conta.");
       }, function(){});
     });
@@ -2558,7 +2580,20 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     return SC;
   }
 
-  function abrirCriarOnline(){ irParaNick("criar", null); }
+  /* Quem tem conta já escolheu um apelido no cadastro. Perguntar de novo
+     na hora de criar a sala é pedir duas vezes a mesma coisa — e ainda
+     abre espaço pra pessoa aparecer com dois nomes diferentes pros
+     mesmos amigos. Pula a tela e usa o apelido da conta.
+
+     Sem conta (Artifact, offline) o fluxo antigo continua valendo. */
+  function abrirCriarOnline(){
+    if (CONTA.perfil && CONTA.perfil.nick){
+      nickCtx = "criar"; nickSelId = "";
+      criarComNick(CONTA.perfil.nick);
+      return;
+    }
+    irParaNick("criar", null);
+  }
 
   function escondeMesaNoCreate(){
     $("create-modo").hidden = true;
@@ -2630,6 +2665,14 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     setTimeout(function(){ try { $("nick-input").focus(); } catch(e){} }, 250);
   }
 
+  /* O que acontece depois que o apelido está decidido — venha ele da
+     tela de apelido ou da conta. */
+  function criarComNick(nick){
+    lembrarNick(nick); novoNick = nick;
+    modoCriarOnline();
+    show("s-create");
+  }
+
   function nickContinuar(){
     var nick = normNick($("nick-input").value);
     if (nickCtx === "identificar" && nickSelId){
@@ -2641,12 +2684,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       return;
     }
     if (!nickValido(nick)){ $("nick-err").textContent = "Escolha de 1 a 14 caracteres."; return; }
-    if (nickCtx === "criar"){
-      lembrarNick(nick); novoNick = nick;
-      modoCriarOnline();
-      show("s-create");
-      return;
-    }
+    if (nickCtx === "criar"){ criarComNick(nick); return; }
     $("nick-ok").disabled = true;
     SC.entrarNovo(nick).then(noop, function(e){
       $("nick-ok").disabled = false;
