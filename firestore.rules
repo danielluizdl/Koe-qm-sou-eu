@@ -103,6 +103,13 @@ service cloud.firestore {
         allow delete: if eu(uid) || eu(outro);
       }
 
+      /* salas: onde a pessoa já jogou. Privado — a lista de onde você
+         anda não é assunto de mais ninguém. Quem está NA sala se lê em
+         salas/{codigo}/jogadores, que é público pra quem tem conta. */
+      match /salas/{codigo} {
+        allow read, write: if eu(uid);
+      }
+
       /* partidas: histórico imutável do jogador. Escreve uma vez e
          nunca mais muda — é a fonte de verdade que permite recalcular
          o agregado se ele se perder ou for adulterado. */

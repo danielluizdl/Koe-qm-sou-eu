@@ -244,12 +244,51 @@ const DUBLE = `
   await page.evaluate(() => document.querySelector('[data-back="s-home"], #conta-back') &&
                             document.querySelector('#s-conta [data-back]').click());
   await new Promise(r => setTimeout(r, 200));
-  t("VISÍVEL agora: Criar jogo", (await visivel("go-create")) === true);
-  t("VISÍVEL agora: Entrar com código", (await visivel("go-join")) === true);
+  /* logado, a capa dá lugar ao painel */
+  t("ESCONDIDA agora: a capa", (await visivel("home-capa")) === false);
+  t("VISÍVEL agora: o painel", (await visivel("home-painel")) === true);
   t("ESCONDIDO agora: Entrar", (await visivel("go-entrar")) === false);
   t("ESCONDIDO agora: Criar conta", (await visivel("go-criar-conta")) === false);
-  t("VISÍVEL agora: atalho do perfil", (await visivel("go-conta")) === true);
-  t("atalho mostra o apelido", /teste/.test(await texto("go-conta")), await texto("go-conta"));
+  t("ESCONDIDOS: os botões antigos do rodapé",
+    (await visivel("go-create")) === false && (await visivel("go-join")) === false);
+
+  t("cumprimenta pelo apelido", /teste/.test(await texto("home-ola")), await texto("home-ola"));
+  t("VISÍVEL: o avatar", (await visivel("home-avatar")) === true);
+  t("avatar mostra a inicial", (await texto("home-avatar")) === "T", await texto("home-avatar"));
+
+  /* os quatro ambientes */
+  for (const id of ["amb-criar", "amb-entrar", "amb-salas", "amb-pontos"]){
+    t("VISÍVEL: " + id, (await visivel(id)) === true);
+  }
+  t("subtítulo de salas traz número real",
+    /nenhuma|sala/.test(await texto("amb-salas-sub")), await texto("amb-salas-sub"));
+  t("subtítulo de pontuação traz número real",
+    /sem partidas|saldo/.test(await texto("amb-pontos-sub")), await texto("amb-pontos-sub"));
+
+  /* navegação entre os ambientes */
+  await clicar("amb-salas");
+  t("Minhas salas abre", (await telaVisivel()) === "s-salas", String(await telaVisivel()));
+  t("avatar continua visível na tela de salas", (await visivel("salas-avatar")) === true);
+  await page.evaluate(() => document.querySelector('#s-salas [data-back]').click());
+  await new Promise(r => setTimeout(r, 150));
+
+  await clicar("amb-pontos");
+  t("Pontuação abre", (await telaVisivel()) === "s-pontuacao", String(await telaVisivel()));
+  t("explica o saldo em uma linha",
+    /ganhar de 7/.test(await texto("pontos-explica")) ||
+    (await visivel("pontos-vazio")) === true);
+  await page.evaluate(() => document.querySelector('#s-pontuacao [data-back]').click());
+  await new Promise(r => setTimeout(r, 150));
+
+  /* o ID, que é como se convida */
+  await clicar("home-avatar");
+  t("avatar abre o perfil", (await telaVisivel()) === "s-conta", String(await telaVisivel()));
+  t("VISÍVEL: a caixa do ID", (await visivel("conta-idbox")) === true);
+  t("o ID vem com # e 6 caracteres",
+    /^#[A-Z0-9]{6}$/.test(await texto("conta-id")), await texto("conta-id"));
+  t("VISÍVEL: convidar alguém", (await visivel("conta-convidar")) === true);
+  await page.evaluate(() => document.querySelector('#s-conta [data-back]').click());
+  await new Promise(r => setTimeout(r, 150));
 
   /* ===== 7. nada vaza fora da tela ===== */
   const larguraOk = await page.evaluate(() =>
@@ -259,7 +298,7 @@ const DUBLE = `
   /* ===== 8. um erro de JS no console reprova ===== */
   const erros = [];
   page.on("pageerror", e => erros.push(e.message));
-  await clicar("go-create");
+  await clicar("amb-criar");
   await new Promise(r => setTimeout(r, 200));
   t("criar jogo abre sem erro de JS", erros.length === 0, erros.join(" | "));
   t("quem tem conta NÃO é perguntado o apelido de novo",

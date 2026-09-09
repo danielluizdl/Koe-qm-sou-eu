@@ -413,6 +413,51 @@ t("o alfabeto não tem 0, 1, I nem O",
   t("e some dos pendentes", (await A2.pedidosRecebidos("y")).length === 0);
 }
 
+/* ================= 10. Minhas salas ================= */
+{
+  const A = CriarContas(makeDb());
+  await A.criar("ana", { nick: "ana", nome: "Ana Souza", email: "a@b.co" });
+
+  t("começa sem salas", (await A.minhasSalas("ana")).length === 0);
+
+  await A.marcarSala("ana", "FESTA", { nick: "ana" });
+  let salas = await A.minhasSalas("ana");
+  t("entrar numa sala registra", salas.length === 1 && salas[0].codigo === "FESTA",
+    JSON.stringify(salas));
+  t("sala nova começa com 0 partidas", salas[0].partidas === 0);
+
+  await A.marcarSala("ana", "FESTA", { partida: true });
+  await A.marcarSala("ana", "FESTA", { partida: true });
+  salas = await A.minhasSalas("ana");
+  t("não duplica a sala", salas.length === 1, JSON.stringify(salas.map(s => s.codigo)));
+  t("conta as partidas", salas[0].partidas === 2, String(salas[0].partidas));
+
+  await A.marcarSala("ana", "PRAIA", { nick: "ana", partida: true, em: Date.now() + 1000 });
+  salas = await A.minhasSalas("ana");
+  t("segunda sala entra", salas.length === 2);
+  t("mais recente vem primeiro", salas[0].codigo === "PRAIA",
+    salas.map(s => s.codigo).join(","));
+
+  t("sem código é no-op", (await A.marcarSala("ana", "")) === null);
+
+  const r = await A.resumo("ana");
+  t("resumo conta as salas", r.salas === 2, JSON.stringify(r));
+  t("resumo soma as partidas das salas", r.partidasEmSalas === 3, String(r.partidasEmSalas));
+  t("resumo traz o saldo do perfil", r.saldo === 0);
+}
+
+/* quem está na sala vem do roster público */
+{
+  const db3 = makeDb();
+  const A = CriarContas(db3);
+  await db3.doc("salas/FESTA/jogadores/ana").set({ id: "ana", nick: "Ana" });
+  await db3.doc("salas/FESTA/jogadores/bia").set({ id: "bia", nick: "Bia" });
+  const quem = await A.quemEstaNaSala("FESTA");
+  t("lista quem estava na sala", quem.length === 2, JSON.stringify(quem));
+  t("em ordem alfabética", quem.map(q => q.nick).join(",") === "Ana,Bia");
+  t("sala vazia devolve lista vazia", (await A.quemEstaNaSala("NADA")).length === 0);
+}
+
 console.log("\n[" + BACKEND + "] " + ok + " passaram, " + falhas.length + " falharam");
 if (falhas.length){ falhas.forEach(f => console.log("  x " + f)); process.exit(1); }
 })();

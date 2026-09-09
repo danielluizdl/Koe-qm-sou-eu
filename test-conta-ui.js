@@ -226,7 +226,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   ok(g("cad-nome") !== g("login-email"), "as duas telas são documentos separados");
 
   /* ===== 1b. e as portas continuam trancadas por dentro ===== */
-  click("go-create");
+  click("amb-criar");
   await settle();
   ok(tela() === "s-login", "criar jogo sem conta cai no login, foi pra " + tela());
   click("go-join");
@@ -379,12 +379,17 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   ok(g("conta-perfil-nome").textContent === "Ana Souza", "perfil mostra o nome completo");
 
   /* ===== 11. com conta, as portas abrem ===== */
-  ok(g("go-create").hidden === false, "com conta, 'Criar jogo' volta pra home");
-  ok(g("go-join").hidden === false, "e 'Entrar com código' também");
-  ok(g("go-entrar").hidden === true, "e os botões de conta somem");
+  ok(g("home-capa").hidden === true, "com conta, a capa some da home");
+  ok(g("home-painel").hidden === false, "e o painel de ambientes aparece");
+  ok(g("home-ola").textContent.indexOf("an") >= 0,
+     "o painel cumprimenta pelo apelido, veio: " + g("home-ola").textContent);
+  ok(g("home-avatar").textContent === "A", "avatar mostra a inicial do apelido, veio: " +
+     g("home-avatar").textContent);
+  ok(g("go-entrar").hidden === true, "os botões de conta somem");
   ok(g("go-criar-conta").hidden === true, "os dois");
-  ok(g("go-conta").hidden === false, "o atalho de perfil aparece no lugar");
-  click("go-create");
+  ok(g("go-create").hidden === true, "os botões antigos do rodapé também");
+  ok(g("go-join").hidden === true, "os dois");
+  click("amb-criar");
   await settle();
   ok(tela() !== "s-conta", "com conta, criar jogo não cai mais na tela de conta");
 
@@ -426,6 +431,68 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   await settle();
   ok(g("amigos-rank").children.length === 2, "ranking com as 2 pessoas que jogaram, veio: " +
      g("amigos-rank").children.length);
+
+  /* ===== 14. os quatro ambientes ===== */
+  ok(!!g("amb-criar") && !!g("amb-entrar") && !!g("amb-salas") && !!g("amb-pontos"),
+     "os quatro ambientes existem");
+
+  click("amb-salas");
+  await settle();
+  ok(tela() === "s-salas", "Minhas salas abre a tela, foi pra " + tela());
+  ok(g("salas-vazio").hidden === false, "sem salas, avisa que está vazio");
+
+  click("amb-pontos");
+  await settle();
+  await settle();   /* a pontuação relê o perfil antes de pintar */
+  ok(tela() === "s-pontuacao", "Pontuação abre a tela, foi pra " + tela());
+  /* uma partida ja foi registrada na secao anterior, entao a tela
+     tem que mostrar os quatro numeros, nao o estado vazio */
+  ok(g("pontos-vazio").hidden === true, "com partida, não diz que está vazio");
+  ok(g("pontos-numeros").children.length === 4,
+     "mostra saldo, aproveitamento, partidas e vitórias, veio: " + g("pontos-numeros").children.length);
+
+  /* ===== 15. o ID no perfil ===== */
+  click("home-avatar");
+  await settle();
+  ok(tela() === "s-conta", "avatar abre o perfil, foi pra " + tela());
+  ok(g("conta-idbox").hidden === false, "a caixa do ID aparece");
+  ok(/^#[A-Z0-9]{6}$/.test(g("conta-id").textContent),
+     "o ID vem formatado com #, veio: " + g("conta-id").textContent);
+
+  /* ===== 16. fim de partida: ponto, sala e amizade ===== */
+  {
+    const CONTAS = require("./contas.js");
+    const outro = CONTAS.CriarContas(DB);
+    await outro.criar("uid-9", { nick: "zeca", nome: "Zeca Teste", email: "z@x.co" });
+
+    const uid = A.ui.CONTA.ident.uid;
+    /* o teste ja registrou partida antes; o que importa aqui e a
+       DIFERENCA que esta partida causa, nao o total acumulado */
+    const antes = await A.ui.CONTA.api.perfil(uid);
+    await A.ui.CONTA.api.registrarMinhaPartida(uid, {
+      pid: "pX", sala: "FESTA",
+      ordem: [{ id: uid, chave: 1 }, { id: "uid-9", chave: 2 }]
+    });
+    await A.ui.CONTA.api.marcarSala(uid, "FESTA", { partida: true });
+    const novos = await A.ui.CONTA.api.amizadeAutomatica(uid, ["uid-9"]);
+    await settle();
+
+    ok(novos.length === 1 && novos[0].nick === "zeca",
+       "jogar junto vira amizade, veio: " + JSON.stringify(novos));
+    ok((await A.ui.CONTA.api.amigos("uid-9")).some(x => x.uid === uid),
+       "e do outro lado também");
+
+    const salas = await A.ui.CONTA.api.minhasSalas(uid);
+    ok(salas.length === 1 && salas[0].codigo === "FESTA",
+       "a sala entra em Minhas salas, veio: " + JSON.stringify(salas));
+    ok(salas[0].partidas === 1, "com a partida contada");
+
+    const perf = await A.ui.CONTA.api.perfil(uid);
+    ok(perf.partidas === antes.partidas + 1,
+       "o agregado somou UMA partida, foi de " + antes.partidas + " pra " + perf.partidas);
+    ok(perf.saldo === antes.saldo + 1,
+       "vencer de 1 soma +1 ao saldo, foi de " + antes.saldo + " pra " + perf.saldo);
+  }
 
   console.log(fails ? "\n" + fails + " falha(s)" : "\ntelas de conta passaram");
   process.exit(fails ? 1 : 0);

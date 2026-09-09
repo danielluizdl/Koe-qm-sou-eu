@@ -235,6 +235,63 @@
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:34px}
   .back{background:none;border:none;padding:6px 10px 6px 0;cursor:pointer;color:var(--ink-2);font-weight:700;font-size:.92rem}
 
+  /* ---- avatar: o atalho pro perfil ----
+     Fica no topo das telas de navegação e some durante a partida —
+     ali nada pode disputar atenção com a carta. */
+  .avatar{
+    width:42px;height:42px;flex:none;border-radius:50%;cursor:pointer;
+    border:2px solid var(--line-2);background:var(--card);color:var(--ink);
+    font-family:var(--f-display);font-size:1.05rem;line-height:1;
+    display:grid;place-items:center;padding:0;
+    transition:border-color .15s,transform .1s;
+  }
+  .avatar:hover{border-color:var(--accent)}
+  .avatar:active{transform:scale(.94)}
+  .avatar:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+
+  .saudacao{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;
+    margin:0 0 4px;
+  }
+  .saudacao h2{margin:0}
+
+  /* ---- ambientes: os destinos da home ----
+     Reaproveita .row. O que muda é o chevron e o subtítulo, que carrega
+     número de verdade em vez de rótulo genérico. */
+  .ambientes{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+  .ambiente{
+    display:flex;align-items:center;gap:14px;width:100%;text-align:left;cursor:pointer;
+    background:var(--card);border:2px solid var(--line);border-radius:var(--r);
+    padding:16px 18px;min-height:72px;color:inherit;
+    transition:border-color .15s,transform .1s;
+  }
+  .ambiente:hover{border-color:var(--line-2)}
+  .ambiente:active{transform:scale(.99)}
+  .ambiente:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+  .ambiente.destaque{border-color:var(--accent);background:var(--accent-soft)}
+  .ambiente .txt{flex:1;min-width:0}
+  .ambiente b{display:block;font-family:var(--f-display);font-size:1.05rem;
+    letter-spacing:-.01em;text-transform:uppercase}
+  .ambiente .sub{
+    display:block;color:var(--ink-3);font-size:.85rem;line-height:1.35;margin-top:3px;
+  }
+  .ambiente .sub:empty{display:none}
+  .ambiente .seta{color:var(--ink-3);font-size:1.3rem;flex:none;line-height:1}
+  .ambiente.destaque .seta{color:var(--accent)}
+
+  /* ---- o ID, feito pra ser copiado ---- */
+  .idbox{
+    display:flex;align-items:center;gap:12px;width:100%;cursor:pointer;text-align:left;
+    background:var(--paper-2);border:2px dashed var(--line-2);border-radius:var(--r);
+    padding:14px 16px;color:inherit;
+  }
+  .idbox:hover{border-color:var(--accent)}
+  .idbox .rot{font-size:.7rem;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--ink-3);display:block}
+  .idbox .val{font-family:var(--f-mono);font-size:1.25rem;font-weight:700;
+    letter-spacing:.1em;color:var(--ink);display:block;margin-top:2px}
+  .idbox .copiar{color:var(--accent);font-size:.85rem;font-weight:700;flex:none}
+
   /* ---- salas online ---- */
   .field{
     width:100%;min-height:56px;padding:0 16px;
@@ -308,27 +365,104 @@
 <div class="app">
 
   <section class="screen on" id="s-home">
-    <div class="mid">
+
+    <!-- DESLOGADO: a capa. Serve pra quem chega. -->
+    <div class="mid" id="home-capa">
       <div>
         <p class="eyebrow">Jogo de mesa para celular</p>
         <h1 class="logo">Quem<br>sou<em>eu?</em></h1>
       </div>
       <p class="lede">Celular na testa e ninguém te conta quem tu é. A mesa só dá dica — e zoa a tua cara até cair a ficha.</p>
       <p class="note" id="home-tally"></p>
-      <div id="home-salas" hidden>
-        <p class="eyebrow" style="margin-bottom:8px">Suas salas</p>
-        <div class="rows" id="home-salas-list"></div>
+    </div>
+
+    <!-- LOGADO: o painel. Serve pra quem já entrou e quer jogar. -->
+    <div id="home-painel" hidden>
+      <div class="topbar" style="margin-bottom:18px">
+        <div class="saudacao" style="flex:1">
+          <h2 id="home-ola"></h2>
+        </div>
+        <button class="avatar" id="home-avatar" aria-label="Sua conta"></button>
+      </div>
+
+      <div class="ambientes">
+        <button type="button" class="ambiente destaque" id="amb-criar">
+          <span class="txt"><b>Criar sala</b><span class="sub" id="amb-criar-sub"></span></span>
+          <span class="seta" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="ambiente" id="amb-entrar">
+          <span class="txt"><b>Entrar com código</b><span class="sub">alguém já criou a sala</span></span>
+          <span class="seta" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="ambiente" id="amb-salas">
+          <span class="txt"><b>Minhas salas</b><span class="sub" id="amb-salas-sub"></span></span>
+          <span class="seta" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="ambiente" id="amb-pontos">
+          <span class="txt"><b>Pontuação</b><span class="sub" id="amb-pontos-sub"></span></span>
+          <span class="seta" aria-hidden="true">›</span>
+        </button>
       </div>
     </div>
+
     <div class="foot">
       <button class="btn" id="go-entrar" hidden>Entrar</button>
       <button class="btn ghost" id="go-criar-conta" hidden>Criar conta</button>
-      <button class="btn" id="go-create">Criar jogo</button>
-      <button class="btn ghost" id="go-join">Entrar com código</button>
+      <button class="btn" id="go-create" hidden>Criar jogo</button>
+      <button class="btn ghost" id="go-join" hidden>Entrar com código</button>
       <button class="linkbtn" id="go-mesa" hidden>Criar jogo pra galera de fora</button>
       <button class="linkbtn" id="go-conta" hidden></button>
       <button class="linkbtn" id="go-resume" hidden></button>
     </div>
+  </section>
+
+  <section class="screen" id="s-salas">
+    <div class="topbar">
+      <button class="back" data-back="s-home">← Voltar</button>
+      <button class="avatar" id="salas-avatar" aria-label="Sua conta"></button>
+    </div>
+    <div class="stack" style="gap:6px"><h2>Minhas salas</h2></div>
+    <div class="rows" id="salas-lista" style="margin-top:16px"></div>
+    <p class="note" id="salas-vazio" hidden>
+      Você ainda não entrou em nenhuma sala. Crie uma ou entre com um código.
+    </p>
+  </section>
+
+  <section class="screen" id="s-sala-detalhe">
+    <div class="topbar"><button class="back" data-back="s-salas">← Voltar</button></div>
+    <div class="stack" style="gap:6px">
+      <p class="eyebrow">Sala</p>
+      <h2 id="det-codigo"></h2>
+      <p class="note" id="det-resumo"></p>
+    </div>
+    <p class="eyebrow" style="margin:18px 0 8px">Quem está nela</p>
+    <div class="rows" id="det-gente"></div>
+    <p class="note" id="det-gente-vazio" hidden>Ninguém na sala agora.</p>
+    <div class="foot"><button class="btn" id="det-voltar-jogar">Voltar pra essa sala</button></div>
+  </section>
+
+  <section class="screen" id="s-pontuacao">
+    <div class="topbar">
+      <button class="back" data-back="s-home">← Voltar</button>
+      <button class="avatar" id="pontos-avatar" aria-label="Sua conta"></button>
+    </div>
+    <div class="stack" style="gap:6px"><h2>Pontuação</h2></div>
+
+    <div class="rows" id="pontos-numeros" style="margin-top:16px"></div>
+    <p class="note" id="pontos-explica" style="margin-top:10px">
+      O saldo mede o quanto você tirou de vantagem sobre o esperado: ganhar de 7
+      vale +7, de 1 vale +1. Ficar no meio da tabela dá zero.
+    </p>
+    <p class="note" id="pontos-vazio" hidden>
+      Você ainda não terminou nenhuma partida.
+    </p>
+
+    <p class="eyebrow" style="margin:22px 0 8px">Entre seus amigos</p>
+    <div class="rows" id="pontos-rank"></div>
+    <p class="note" id="pontos-rank-vazio" hidden>
+      Ninguém pra comparar ainda. Jogue com alguém — vocês viram amigos na hora.
+    </p>
+    <div class="foot"><button class="btn ghost" id="pontos-amigos">Meus amigos</button></div>
   </section>
 
   <section class="screen" id="s-create">
@@ -743,11 +877,20 @@
         <p class="note" id="conta-perfil-nome"></p>
         <p class="note" id="conta-perfil-email"></p>
       </div>
+      <button type="button" class="idbox" id="conta-idbox" hidden>
+        <span class="txt" style="flex:1">
+          <span class="rot">Seu ID</span>
+          <span class="val" id="conta-id"></span>
+        </span>
+        <span class="copiar">copiar</span>
+      </button>
+      <p class="note">Mande esse ID pra galera te adicionar.</p>
       <div class="rows" id="conta-numeros"></div>
       <p class="note" id="conta-perfil-vazio" hidden>Você ainda não terminou nenhuma partida.</p>
     </div>
     <div class="foot">
       <button class="btn" id="conta-amigos">Meus amigos</button>
+      <button class="btn ghost" id="conta-convidar">Convidar alguém</button>
       <button class="linkbtn" id="conta-sair">Sair da conta</button>
     </div>
   </section>
@@ -1184,7 +1327,13 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   /* ================= navegação ================= */
   var backs = document.querySelectorAll("[data-back]");
   for (var bi = 0; bi < backs.length; bi++){
-    (function(b){ b.addEventListener("click", function(){ show(b.getAttribute("data-back")); }); })(backs[bi]);
+    (function(b){ b.addEventListener("click", function(){
+      var destino = b.getAttribute("data-back");
+      show(destino);
+      /* a home mostra números; voltar pra ela sem repintar deixaria
+         o painel com o estado de quando foi montado */
+      if (destino === "s-home" && typeof pintarHome === "function") pintarHome();
+    }); })(backs[bi]);
   }
   /* reconstrói a grade em vez de só trocar de tela: numa sessão retomada,
      s-slot nunca foi preenchida */
@@ -1697,6 +1846,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
     function finalizarEntrada(){
       guardarSala(C.codigo, C.meuId, C.meuNick);
+      /* o localStorage vale só neste aparelho; a conta lembra em todos */
+      if (typeof aoEntrarNaSala === "function") aoEntrarNaSala(C.codigo, C.meuNick);
       lembrarNick(C.meuNick);
       assinar();
     }
@@ -1820,8 +1971,46 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
         refSala().update({ fase: "fim", fimEm: agora() }).then(limpaAvanco, limpaAvanco);
       }
       gravarHist();
+      fecharMinhaPartida();
     }
     function limpaAvanco(){ C._avancando = false; }
+
+    /* Cada aparelho fecha a PRÓPRIA partida: grava o resultado, soma o
+       agregado e vira amigo de quem jogou junto.
+
+       Por que cada um, e não o host: a regra de segurança só deixa
+       escrever no seu próprio perfil e criar a aresta de amizade que
+       aponta pra você. Se o host fizesse por todos, a regra teria de
+       liberar escrita cruzada — que é como se fabrica ponto no rank
+       alheio.
+
+       Roda uma vez por partida: _fechada guarda o pid já processado, e
+       registrarMinhaPartida é idempotente do lado do banco também. */
+    C._fechada = null;
+    function fecharMinhaPartida(){
+      if (!C.sala || C.sala.__apagada || C.sala.fase !== "fim") return;
+      var pid = C.sala.partidaId;
+      if (!pid || C._fechada === pid) return;
+      if (!C.meuId || !souParticipante()) return;
+
+      var r = ranking();
+      if (!r.length) return;
+      for (var i = 0; i < r.length; i++) if (!r[i].acertouEm) return;
+
+      C._fechada = pid;
+      if (typeof aoFimDaPartida === "function"){
+        var ordem = [], outros = [];
+        for (var k = 0; k < r.length; k++){
+          ordem.push({ id: r[k].id, chave: r[k].acertouEm });
+          if (r[k].id !== C.meuId) outros.push(r[k].id);
+        }
+        aoFimDaPartida({
+          pid: pid, sala: C.codigo, meuId: C.meuId,
+          terminadaEm: C.sala.fimEm || agora(),
+          ordem: ordem, outros: outros
+        });
+      }
+    }
 
     function gravarHist(){
       if (!C.sala || C.sala.__apagada || C.sala.fase !== "fim") return;
@@ -2219,6 +2408,14 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     $("conta-perfil-nick").textContent = p.nick;
     $("conta-perfil-nome").textContent = p.nome || "";
     $("conta-perfil-email").textContent = p.email || "";
+
+    /* Sem ID a caixa some inteira, em vez de mostrar um rótulo vazio.
+       Contas antigas ganham o ID logo depois, quando garantirId roda. */
+    var cx = $("conta-idbox");
+    if (cx){
+      cx.hidden = !p.id;
+      if (p.id) $("conta-id").textContent = "#" + p.id;
+    }
     var jogou = (p.partidas || 0) > 0;
     $("conta-perfil-vazio").hidden = jogou;
     var box = $("conta-numeros");
@@ -2243,7 +2440,11 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   function carregarPerfil(){
     if (!contaLigada()){ CONTA.perfil = null; pintarConta(); pintarHome(); return; }
-    CONTA.api.perfil(CONTA.ident.uid).then(function(p){
+    /* garantirId dá ID a quem se cadastrou antes dele existir. Roda
+       antes de ler o perfil pra tela nunca aparecer sem ID. */
+    CONTA.api.garantirId(CONTA.ident.uid)["catch"](noop).then(function(){
+      return CONTA.api.perfil(CONTA.ident.uid);
+    }).then(function(p){
       CONTA.perfil = p;
       pintarConta(); pintarHome();
       if (p && CONTA.apos){ var f = CONTA.apos; CONTA.apos = null; f(); }
@@ -2358,12 +2559,31 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   }
 
   /* ---- ligações ---- */
-  function ligarConta(){
-    function abrirConta(modo){
-      if (modo) CONTA.modo = modo;
-      show(telaDaConta());
-      pintarConta();
+  function linkDoJogo(){
+    try { return location.href.split("#")[0]; } catch(e){ return ""; }
+  }
+
+  /* clipboard falha em contexto não seguro e em navegador antigo; o
+     aviso tem que dizer o que aconteceu, não sumir em silêncio. */
+  function copiar(texto, aviso){
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(texto).then(
+        function(){ toast(aviso); },
+        function(){ toast("Não consegui copiar. Anote: " + texto); });
+      return;
     }
+    toast("Anote: " + texto);
+  }
+
+  /* Abre a tela de conta certa pro estado atual. Fica no escopo do
+     módulo porque o avatar, a home e o fluxo de login chamam todos. */
+  function abrirConta(modo){
+    if (modo) CONTA.modo = modo;
+    show(telaDaConta());
+    pintarConta();
+  }
+
+  function ligarConta(){
     var go = $("go-conta");
     if (go) go.addEventListener("click", function(){ abrirConta(null); });
     var gEntrar = $("go-entrar");
@@ -2472,6 +2692,21 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       }, function(e){ txt("login-err", motivoAuth(e)); });
     });
 
+    var idbox = $("conta-idbox");
+    if (idbox) idbox.addEventListener("click", function(){
+      if (!CONTA.perfil || !CONTA.perfil.id) return;
+      copiar("#" + CONTA.perfil.id, "ID copiado.");
+    });
+
+    var conv = $("conta-convidar");
+    if (conv) conv.addEventListener("click", function(){
+      if (!CONTA.perfil) return;
+      var texto = "Bora jogar Quem Sou Eu? Me adiciona: " + CONTA.perfil.nick +
+                  " (#" + (CONTA.perfil.id || "") + ") — " + linkDoJogo();
+      if (navigator.share){ navigator.share({ title: "Quem Sou Eu", text: texto })["catch"](noop); return; }
+      copiar(texto, "Convite copiado.");
+    });
+
     var bAmigos = $("conta-amigos");
     if (bAmigos) bAmigos.addEventListener("click", function(){ show("s-amigos"); pintarAmigos(); });
 
@@ -2519,6 +2754,237 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     });
   }
 
+  /* ============================================================
+     HOME EM AMBIENTES, AVATAR, MINHAS SALAS E PONTUAÇÃO
+     ============================================================ */
+
+  /* O avatar aparece em várias telas; todos abrem a mesma conta. */
+  function pintarAvatares(){
+    var ids = ["home-avatar", "salas-avatar", "pontos-avatar"], i, el;
+    var letra = (CONTA.perfil && CONTA.perfil.nick)
+      ? CONTA.perfil.nick.charAt(0).toUpperCase() : "?";
+    for (i = 0; i < ids.length; i++){
+      el = $(ids[i]);
+      if (el) el.textContent = letra;
+    }
+  }
+
+  function ligarAvatares(){
+    var ids = ["home-avatar", "salas-avatar", "pontos-avatar"], i;
+    for (i = 0; i < ids.length; i++){
+      (function(el){
+        if (el) el.addEventListener("click", function(){ abrirConta(null); });
+      })($(ids[i]));
+    }
+  }
+
+  /* Os subtítulos dos ambientes. Carregam número de verdade — um painel
+     que diz "veja suas salas" não informa nada; "3 salas · 12 partidas"
+     responde antes de a pessoa tocar. Enquanto os dados não chegam o
+     subtítulo fica vazio, porque "carregando…" é ruído. */
+  function pintarResumo(){
+    if (!contaCompleta()) return;
+    CONTA.api.resumo(CONTA.ident.uid).then(function(r){
+      var salas = $("amb-salas-sub");
+      if (salas){
+        salas.textContent = r.salas
+          ? r.salas + (r.salas === 1 ? " sala" : " salas") + " · " +
+            r.partidasEmSalas + (r.partidasEmSalas === 1 ? " partida" : " partidas")
+          : "nenhuma ainda";
+      }
+      var pts = $("amb-pontos-sub");
+      if (pts){
+        pts.textContent = r.partidas
+          ? (r.saldo > 0 ? "+" : "") + r.saldo + " de saldo · " +
+            Math.round(r.aproveitamento * 100) + "% de aproveitamento"
+          : "sem partidas ainda";
+      }
+      var criar = $("amb-criar-sub");
+      if (criar) criar.textContent = "você chama a turma";
+    }, noop);
+  }
+
+  /* ---- minhas salas ---- */
+  function abrirSalas(){
+    show("s-salas");
+    pintarAvatares();
+    if (!contaCompleta()) return;
+    CONTA.api.minhasSalas(CONTA.ident.uid).then(function(salas){
+      var box = $("salas-lista");
+      box.innerHTML = "";
+      $("salas-vazio").hidden = salas.length > 0;
+      for (var i = 0; i < salas.length; i++){
+        (function(s){
+          var row = document.createElement("button");
+          row.className = "row"; row.type = "button";
+          row.innerHTML = '<span class="grow"><b></b><span class="sub"></span></span>' +
+                          '<span class="pos" style="font-size:1.1rem">›</span>';
+          row.querySelector("b").textContent = "sala " + s.codigo;
+          row.querySelectorAll("span")[1].textContent =
+            (s.partidas || 0) + ((s.partidas === 1) ? " partida" : " partidas") +
+            " · " + quandoFoi(s.ultimaEm);
+          row.addEventListener("click", function(){ abrirDetalheSala(s); });
+          box.appendChild(row);
+        })(salas[i]);
+      }
+    }, noop);
+  }
+
+  /* "há 2 dias" diz mais que uma data completa pra quem só quer lembrar
+     de qual sala é. */
+  function quandoFoi(ms){
+    if (!ms) return "";
+    var d = Math.floor((agora() - ms) / 86400000);
+    if (d <= 0) return "hoje";
+    if (d === 1) return "ontem";
+    if (d < 30) return "há " + d + " dias";
+    var m = Math.floor(d / 30);
+    return "há " + m + (m === 1 ? " mês" : " meses");
+  }
+
+  var salaDetalhe = null;
+  function abrirDetalheSala(s){
+    salaDetalhe = s;
+    show("s-sala-detalhe");
+    $("det-codigo").textContent = s.codigo;
+    $("det-resumo").textContent =
+      (s.partidas || 0) + ((s.partidas === 1) ? " partida" : " partidas") +
+      " · última " + quandoFoi(s.ultimaEm);
+    var box = $("det-gente");
+    box.innerHTML = "";
+    $("det-gente-vazio").hidden = true;
+    CONTA.api.quemEstaNaSala(s.codigo).then(function(gente){
+      $("det-gente-vazio").hidden = gente.length > 0;
+      for (var i = 0; i < gente.length; i++){
+        var row = document.createElement("div");
+        row.className = "row" +
+          ((CONTA.ident && gente[i].id === CONTA.ident.uid) ? " eu" : "");
+        row.innerHTML = '<span class="grow"><b></b></span>';
+        row.querySelector("b").textContent = gente[i].nick +
+          ((CONTA.ident && gente[i].id === CONTA.ident.uid) ? " (você)" : "");
+        box.appendChild(row);
+      }
+    }, noop);
+  }
+
+  /* ---- pontuação ---- */
+  function abrirPontuacao(){
+    show("s-pontuacao");
+    pintarAvatares();
+    if (!contaCompleta()) return;
+    /* relê antes de pintar: o retrato em memória pode estar velho */
+    CONTA.api.perfil(CONTA.ident.uid).then(function(fresco){
+      if (fresco) CONTA.perfil = fresco;
+      pintarPontuacao();
+    }, pintarPontuacao);
+  }
+
+  function pintarPontuacao(){
+    if (!contaCompleta()) return;
+    var p = CONTA.perfil, jogou = (p.partidas || 0) > 0;
+    var box = $("pontos-numeros");
+    box.innerHTML = "";
+    $("pontos-vazio").hidden = jogou;
+    $("pontos-explica").hidden = !jogou;
+    if (jogou){
+      var aprov = (p.somaAprov || 0) / p.partidas;
+      linhaNumero(box, "Saldo", (p.saldo > 0 ? "+" : "") + p.saldo, "sobre o esperado");
+      linhaNumero(box, "Aproveitamento", Math.round(aprov * 100) + "%", "50% é o que a sorte daria");
+      linhaNumero(box, "Partidas", String(p.partidas), "");
+      linhaNumero(box, "Vitórias", String(p.vitorias || 0), "");
+    }
+
+    CONTA.api.rankAmigos(CONTA.ident.uid).then(function(linhas){
+      var rank = $("pontos-rank");
+      rank.innerHTML = "";
+      var comJogo = [], i;
+      for (i = 0; i < linhas.length; i++) if (linhas[i].partidas > 0) comJogo.push(linhas[i]);
+      $("pontos-rank-vazio").hidden = comJogo.length > 1;
+      for (i = 0; i < comJogo.length; i++){
+        var r = comJogo[i];
+        var row = document.createElement("div");
+        row.className = "row" + (r.eu ? " eu" : "");
+        row.innerHTML = '<span class="pos"></span>' +
+          '<span class="grow"><b></b><span class="sub"></span></span><span class="pos"></span>';
+        var cel = row.querySelectorAll(".pos");
+        cel[0].textContent = r.posicao + "º";
+        row.querySelector("b").textContent = r.nick + (r.eu ? " (você)" : "");
+        row.querySelectorAll("span")[2].textContent =
+          Math.round(r.aproveitamento * 100) + "% · " + r.partidas +
+          (r.partidas === 1 ? " partida" : " partidas");
+        cel[1].textContent = (r.saldo > 0 ? "+" : "") + r.saldo;
+        rank.appendChild(row);
+      }
+    }, noop);
+  }
+
+  /* O que acontece quando a partida acaba, do lado da conta.
+     Só vale pra quem tem conta: sem uid não há onde somar ponto nem
+     com quem virar amigo. */
+  function aoEntrarNaSala(codigo, nick){
+    if (!contaCompleta()) return;
+    CONTA.api.marcarSala(CONTA.ident.uid, codigo, { nick: nick })["catch"](noop);
+  }
+
+  function aoFimDaPartida(info){
+    if (!contaCompleta() || !CONTA.ident) return;
+    if (info.meuId !== CONTA.ident.uid) return;   // jogando de convidado
+    var uid = CONTA.ident.uid;
+
+    CONTA.api.registrarMinhaPartida(uid, {
+      pid: info.pid, sala: info.sala,
+      terminadaEm: info.terminadaEm, ordem: info.ordem
+    }).then(function(){
+      return CONTA.api.perfil(uid);
+    }).then(function(perf){
+      if (perf) CONTA.perfil = perf;
+      return CONTA.api.marcarSala(uid, info.sala, { partida: true, nick: CONTA.perfil.nick });
+    }).then(function(){
+      return CONTA.api.amizadeAutomatica(uid, info.outros);
+    }).then(function(novos){
+      /* Adicionar em silêncio seria surpresa desagradável: jogar com
+         alguém passa a expor seu perfil pra essa pessoa. Então avisa. */
+      if (novos && novos.length){
+        var nomes = [];
+        for (var i = 0; i < novos.length; i++) nomes.push(novos[i].nick);
+        toast(nomes.length === 1
+          ? "Você e " + nomes[0] + " agora são amigos."
+          : "Vocês agora são amigos: " + nomes.join(", ") + ".");
+      }
+      pintarHome();
+    }, noop);
+  }
+
+  function ligarAmbientes(){
+    ligarAvatares();
+    var criar = $("amb-criar");
+    if (criar) criar.addEventListener("click", function(){
+      comConta(function(){
+        if (ONLINE){ abrirCriarOnline(); return; }
+        abrirCriarSemDb();
+      });
+    });
+    var entrar = $("amb-entrar");
+    if (entrar) entrar.addEventListener("click", function(){
+      comConta(function(){
+        show("s-entrar");
+        setTimeout(function(){ $("entrar-input").focus(); }, 250);
+      });
+    });
+    var salas = $("amb-salas");
+    if (salas) salas.addEventListener("click", function(){ comConta(abrirSalas); });
+    var pontos = $("amb-pontos");
+    if (pontos) pontos.addEventListener("click", function(){ comConta(abrirPontuacao); });
+
+    var pa = $("pontos-amigos");
+    if (pa) pa.addEventListener("click", function(){ show("s-amigos"); pintarAmigos(); });
+
+    var voltar = $("det-voltar-jogar");
+    if (voltar) voltar.addEventListener("click", function(){
+      if (salaDetalhe) voltarParaSala(salaDetalhe.codigo);
+    });
+  }
+
   function pintarHome(){
     /* A home tem duas caras.
 
@@ -2534,41 +3000,37 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     var logado = !!(CONTA.ident && CONTA.perfil);
     var deslogado = temConta && !logado;
 
+    /* A capa some quando a pessoa entra. Logotipo e frase de venda
+       servem pra quem chega, não pra quem já está dentro e quer jogar. */
+    var capa = $("home-capa"), painel = $("home-painel");
+    if (capa) capa.hidden = logado;
+    if (painel) painel.hidden = !logado;
+
     var bEntrar = $("go-entrar"), bCriar = $("go-criar-conta");
     if (bEntrar) bEntrar.hidden = !deslogado;
     if (bCriar)  bCriar.hidden  = !deslogado;
 
-    $("go-create").hidden = deslogado;
-    $("go-join").hidden = deslogado;
-    /* quem ativou o modo mesa foi ativarOnline; aqui só some com ele
-       enquanto não há conta, sem ligar de volta por conta própria */
-    if (deslogado) $("go-mesa").hidden = true;
+    /* Os botões do rodapé só sobrevivem onde não há conta possível
+       (Artifact, offline). Com conta, quem manda são os ambientes. */
+    $("go-create").hidden = temConta;
+    $("go-join").hidden = temConta;
+    if (temConta) $("go-mesa").hidden = true;
+
+    if (logado){
+      var ola = $("home-ola");
+      if (ola) ola.textContent = "Olá, " + CONTA.perfil.nick;
+      pintarAvatares();
+      pintarResumo();
+    }
 
     var bc = $("go-conta");
     if (bc){
-      bc.hidden = !temConta || deslogado;
+      bc.hidden = true;   /* o avatar tomou o lugar dele */
       bc.textContent = !CONTA.ident ? "Entrar ou criar conta"
                      : !CONTA.perfil ? "Terminar meu cadastro"
                      : CONTA.perfil.nick + " · amigos e ranking";
     }
 
-    var salas = deslogado ? [] : (ONLINE ? lerSalas() : []);
-    var wrap = $("home-salas"), lst = $("home-salas-list");
-    if (!salas.length){ wrap.hidden = true; return; }
-    wrap.hidden = false;
-    lst.innerHTML = "";
-    for (var i = 0; i < salas.length; i++){
-      (function(s){
-        var row = document.createElement("button");
-        row.className = "row"; row.type = "button";
-        row.innerHTML = '<span class="grow"><b></b><span class="sub"></span></span>' +
-          '<span class="pos" style="font-size:1.1rem">›</span>';
-        row.querySelector("b").textContent = "sala " + s.codigo;
-        row.querySelectorAll("span")[1].textContent = "como " + (s.nick || "?");
-        row.addEventListener("click", function(){ voltarParaSala(s.codigo); });
-        lst.appendChild(row);
-      })(salas[i]);
-    }
   }
 
   function novaSalaCliente(){
@@ -3711,6 +4173,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   var QF = (typeof window !== "undefined" && window) ? window.QSE_FIREBASE : null;
   if (QF && typeof QF.aoMudar === "function"){
     ligarConta();
+    ligarAmbientes();
     QF.aoMudar(function(e){
       if (!e || !e.db) return;
       /* Passa a identidade sempre: ativarOnline só liga uma vez, mas a

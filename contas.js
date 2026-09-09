@@ -500,6 +500,89 @@
       });
     };
 
+    /* ---------------- minhas salas ----------------
+       Onde a pessoa já jogou. Antes isso morava no localStorage, então
+       valia só naquele celular: trocar de aparelho apagava o histórico
+       de salas. Agora mora na conta.
+
+       Privado (usuarios/{uid}/salas) porque é a lista de onde você
+       anda — não é assunto de mais ninguém. Quem está NA sala se lê em
+       salas/{codigo}/jogadores, que é público pra quem tem conta. */
+    function refSalas(uid){ return refUsuario(uid).collection("salas"); }
+
+    A.marcarSala = function(uid, codigo, extra){
+      if (!uid || !codigo) return Promise.resolve(null);
+      /* extra.em existe pro teste conseguir controlar o instante: duas
+         salas marcadas no mesmo milissegundo empatariam na ordenacao. */
+      var t = (extra && extra.em) || agora();
+      var ref = refSalas(uid).doc(codigo);
+      return ref.get().then(function(s){
+        if (s.exists){
+          var d = s.data();
+          return ref.update({
+            ultimaEm: t,
+            partidas: (d.partidas || 0) + ((extra && extra.partida) ? 1 : 0),
+            nick: (extra && extra.nick) || d.nick || ""
+          });
+        }
+        return ref.set({
+          codigo: codigo,
+          entrouEm: t, ultimaEm: t,
+          partidas: (extra && extra.partida) ? 1 : 0,
+          nick: (extra && extra.nick) || ""
+        });
+      }).then(function(){ return codigo; }, function(){ return null; });
+    };
+
+    /* Mais recente primeiro: a sala de ontem interessa mais que a de
+       seis meses atrás. */
+    A.minhasSalas = function(uid){
+      return refSalas(uid).get().then(function(qs){
+        var out = [], i;
+        for (i = 0; i < qs.docs.length; i++) out.push(qs.docs[i].data());
+        /* desempate pelo codigo: sem ele, duas salas com o mesmo
+           instante sairiam em ordem imprevisivel a cada leitura. */
+        out.sort(function(a, b){
+          return ((b.ultimaEm || 0) - (a.ultimaEm || 0)) ||
+                 String(a.codigo).localeCompare(String(b.codigo));
+        });
+        return out;
+      }, function(){ return []; });
+    };
+
+    /* Quem estava na sala. Lê o roster público — serve pra mostrar a
+       turma antes de a pessoa decidir voltar pra lá. */
+    A.quemEstaNaSala = function(codigo){
+      return db.doc("salas/" + codigo).collection("jogadores").get().then(function(qs){
+        var out = [], i, d;
+        for (i = 0; i < qs.docs.length; i++){
+          d = qs.docs[i].data();
+          if (d && d.nick) out.push({ id: d.id, nick: d.nick });
+        }
+        out.sort(function(a, b){ return (a.nick || "").localeCompare(b.nick || ""); });
+        return out;
+      }, function(){ return []; });
+    };
+
+    /* Os números que a home mostra embaixo de cada ambiente. Um painel
+       que diz "veja suas salas" não informa nada; "3 salas · 12
+       partidas" responde antes de a pessoa tocar. */
+    A.resumo = function(uid){
+      return Promise.all([ A.minhasSalas(uid), A.perfilPublico(uid) ])
+        .then(function(r){
+          var salas = r[0] || [], p = r[1] || {};
+          var totalPartidas = 0, i;
+          for (i = 0; i < salas.length; i++) totalPartidas += (salas[i].partidas || 0);
+          return {
+            salas: salas.length,
+            partidasEmSalas: totalPartidas,
+            partidas: p.partidas || 0,
+            saldo: p.saldo || 0,
+            aproveitamento: p.partidas ? (p.somaAprov || 0) / p.partidas : 0.5
+          };
+        });
+    };
+
     /* ---------------- rank entre amigos ----------------
        Lê perfis (agregado pronto), não partidas: 1 leitura por amigo.
        Inclui o próprio jogador — um rank sem você não serve pra nada. */
