@@ -1,7 +1,14 @@
-/* Ponta a ponta contra o projeto REAL: cria conta, grava perfil,
-   reserva apelido, testa apelido repetido, entra com a senha, registra
-   uma partida, lê o ranking — e limpa tudo no fim.
-   node _e2e.js */
+/* Ponta a ponta contra o projeto REAL — cria contas de verdade.
+
+   Fora da bateria de propósito: toca a rede, gasta cota e deixa dois
+   perfis no banco (a regra proíbe apagar perfis/, porque salas são
+   permanentes). Rode à mão quando quiser provar que a corrente inteira
+   funciona de ponta a ponta: Auth, Firestore, regras e contas.js.
+
+   Foi ele que provou que o cadastro funciona depois que o provedor de
+   e-mail e senha foi ativado no console.
+
+   node test-e2e-real.js */
 const { initializeApp } = require("firebase/app");
 const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
         signOut, deleteUser } = require("firebase/auth");
