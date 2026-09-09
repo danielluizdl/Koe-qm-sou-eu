@@ -7,7 +7,7 @@
 const fs = require("fs");
 const vm = require("vm");
 
-const html = fs.readFileSync(__dirname + "/quem-sou-eu-online.html", "utf8");
+const html = fs.readFileSync(__dirname + (process.env.JOGO || "/quem-sou-eu-temas.html"), "utf8");
 const src = html.slice(html.indexOf("<script>") + 8, html.lastIndexOf("</" + "script>"));
 const injected = src.slice(0, src.lastIndexOf("})();")) +
   "globalThis.__t={CriarMesa:CriarMesa,encodeMesa5:encodeMesa5,decodeMesa5:decodeMesa5," +

@@ -5,7 +5,7 @@
 const fs = require("fs");
 const vm = require("vm");
 
-const html = fs.readFileSync(__dirname + "/quem-sou-eu-online.html", "utf8");
+const html = fs.readFileSync(__dirname + (process.env.JOGO || "/quem-sou-eu-temas.html"), "utf8");
 const open = html.indexOf("<script>") + "<script>".length;
 const close = html.lastIndexOf("</" + "script>");
 let code = html.slice(open, close);

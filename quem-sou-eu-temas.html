@@ -1314,7 +1314,19 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
      CriarSalaCliente(db) — uma visao de UM jogador sobre UMA sala.
      A pagina cria um; o arquivo de teste cria varios sobre o mesmo db.
      ============================================================ */
-  function CriarSalaCliente(db){
+  function CriarSalaCliente(db, identidade){
+    /* `identidade` é {uid} do Firebase Auth quando a pessoa está logada.
+       Sem ela, o jogador continua sendo um uuid de aparelho — é o que
+       mantém o modo convidado e os testes antigos funcionando.
+
+       Com ela, o id do jogador PASSA A SER o auth.uid, e é isso que
+       torna a regra de segurança possível: `jogadores/{jid}` só aceita
+       escrita de quem prova ser jid. Com uuid de aparelho não há o que
+       provar, e a regra teria de liberar escrita pra qualquer um. */
+    function novoId(){
+      return (identidade && identidade.uid) ? identidade.uid : uuid();
+    }
+
     var C = {
       db: db, codigo: "", meuId: "", meuNick: "",
       sala: null, jogadores: [], hist: null,
@@ -1372,7 +1384,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     /* ---- entrar / criar ---- */
 
     C.criar = function(codigo, nick, mask, nivel){
-      C.meuId = uuid();
+      C.meuId = novoId();
       C.meuNick = normNick(nick);
       var aleatorio = !codigo;
       var tentativas = 0;
@@ -1420,6 +1432,21 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
           var membros = [];
           for (var i = 0; i < qs.docs.length; i++) if (qs.docs[i].exists) membros.push(qs.docs[i].data());
           C._membros = membros;
+
+          /* Logado: o uid já diz quem sou, em qualquer aparelho. Antes
+             disso, "sou eu" dependia do localStorage — trocar de celular
+             ou limpar o navegador fazia a pessoa virar outro jogador e
+             perder a pontuação da sala. */
+          if (identidade && identidade.uid){
+            for (var u = 0; u < membros.length; u++){
+              if (membros[u].id === identidade.uid){
+                C.meuId = membros[u].id; C.meuNick = membros[u].nick;
+                return refJogador(C.meuId).update({ vistoEm: agora() }).then(noop, noop)
+                  .then(function(){ finalizarEntrada(); return { ok: true }; });
+              }
+            }
+          }
+
           var salvo = salaSalva(codigo);
           if (salvo && salvo.jogadorId){
             for (var j = 0; j < membros.length; j++){
@@ -1452,7 +1479,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       for (var i = 0; i < C._membros.length; i++){
         if (normSenha(C._membros[i].nick) === normSenha(nick)) return rejeitar("nick-repetido");
       }
-      C.meuId = uuid(); C.meuNick = nick;
+      C.meuId = novoId(); C.meuNick = nick;
       var t = agora();
       return refJogador(C.meuId).set(novoJogador(C.meuId, nick, t)).then(function(){ finalizarEntrada(); });
     };
@@ -1801,7 +1828,14 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     return null;
   }
 
-  function ativarOnline(db){
+  /* Identidade do Firebase Auth, quando existe. Fica fora de
+     ativarOnline porque o login pode chegar DEPOIS do banco: a pessoa
+     abre o jogo deslogada, joga de convidado, e entra na conta no meio.
+     activeIdent é lida na hora de criar o cliente de sala. */
+  var activeIdent = null;
+
+  function ativarOnline(db, identidade){
+    if (identidade !== undefined) activeIdent = identidade;
     if (ONLINE) return;
     ONLINE = true; activeDb = db;
     $("go-mesa").hidden = false;
@@ -1837,7 +1871,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     if (SC && SC.ativo) SC.sair();
     if (MESA){ MESA.sair(); MESA = null; }
     modoAtivo = "sala"; pausaPassar = false;
-    SC = CriarSalaCliente(activeDb);
+    SC = CriarSalaCliente(activeDb, activeIdent);
     SC.aoMudar(renderSala);
     return SC;
   }
@@ -2945,8 +2979,26 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     });
   }
 
-  /* acende os recursos de sala quando (e se) a capability db resolver.
-     Sem db, ou top-level servido pela plataforma, nada muda: jogo de 7 chars. */
+  /* ---- de onde vem o banco ----
+     Dois caminhos, e o jogo não precisa saber qual atendeu:
+
+       Firebase   quando servido como web app (firebase-boot.js presente)
+       capability quando rodando dentro do runtime de Artifacts
+
+     Nenhum dos dois é requisito. Se os dois faltarem, o jogo continua
+     inteiro nos modos offline — que é como ele nasceu. */
+
+  var QF = (typeof window !== "undefined" && window) ? window.QSE_FIREBASE : null;
+  if (QF && typeof QF.aoMudar === "function"){
+    QF.aoMudar(function(e){
+      if (!e || !e.db) return;
+      /* Passa a identidade sempre: ativarOnline só liga uma vez, mas a
+         identidade pode mudar depois (a pessoa entra na conta com o
+         jogo já aberto), e aí a próxima sala já nasce com o uid. */
+      ativarOnline(e.db, e.identidade || null);
+    });
+  }
+
   var _cl = (typeof claude !== "undefined" && claude) ? claude
           : (typeof window !== "undefined" && window && window.claude) ? window.claude : null;
   if (_cl && typeof _cl.use === "function"){

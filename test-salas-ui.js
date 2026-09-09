@@ -8,7 +8,7 @@
 const fs = require("fs");
 const vm = require("vm");
 
-const html = fs.readFileSync(__dirname + "/quem-sou-eu-online.html", "utf8");
+const html = fs.readFileSync(__dirname + (process.env.JOGO || "/quem-sou-eu-temas.html"), "utf8");
 const headHtml = html.slice(0, html.indexOf("<script>"));
 const scriptSrc = html.slice(html.indexOf("<script>") + 8, html.lastIndexOf("</" + "script>"));
 

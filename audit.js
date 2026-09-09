@@ -1,7 +1,13 @@
 /* Auditoria do baralho. Lê o HTML publicado — fonte única, sem cópia paralela.
    node audit.js   (sai com código 1 se algo estiver quebrado) */
 const fs = require("fs");
-const src = fs.readFileSync(__dirname + "/quem-sou-eu-online.html", "utf8");
+/* Normaliza a quebra de linha antes de fatiar. O grab() abaixo procura
+   o marcador ";" seguido de \n; num arquivo salvo no Windows vem um \r
+   no meio, o marcador nunca casa, e o slice ia até o fim do arquivo —
+   o eval então engasgava no </script>. Passava por acaso no arquivo
+   antigo, que tinha uma linha com quebra solta. */
+const src = fs.readFileSync(__dirname + (process.env.JOGO || "/quem-sou-eu-temas.html"), "utf8")
+  .replace(/\r\n/g, "\n");
 
 /* fatiamento por marcador: sem regex, sem barra invertida para o shell comer */
 function grab(name) {

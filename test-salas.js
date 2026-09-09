@@ -15,7 +15,7 @@
 const fs = require("fs");
 const vm = require("vm");
 
-const html = fs.readFileSync(__dirname + "/quem-sou-eu-online.html", "utf8");
+const html = fs.readFileSync(__dirname + (process.env.JOGO || "/quem-sou-eu-temas.html"), "utf8");
 const open = html.indexOf("<script>") + "<script>".length;
 const close = html.lastIndexOf("</" + "script>");
 let base = html.slice(open, close);
@@ -212,7 +212,7 @@ function makeDbCapability() {
 }
 
 /* ---------------- aparelho = 1 contexto vm + localStorage próprio ---------------- */
-function makeDevice(db, name) {
+function makeDevice(db, name, ident) {
   const mem = new Map();
   const localStorage = {
     getItem: k => (mem.has(k) ? mem.get(k) : null),
@@ -235,7 +235,7 @@ function makeDevice(db, name) {
   script.runInContext(sandbox);
   const T = sandbox.__t;
   if (!T) throw new Error("as funções da sala não foram expostas");
-  return { name, sandbox, T, mem, localStorage, client: T.CriarSalaCliente(db) };
+  return { name, sandbox, T, mem, localStorage, client: T.CriarSalaCliente(db, ident || null) };
 }
 
 /* ---------------- runner ---------------- */
@@ -376,6 +376,52 @@ async function cenarioReingresso() {
   ok(p2novo.client.meuId === alvo.id, "reingresso: P2 retomou o mesmo jogadorId");
   ok(host.vm().membros.length === 3, "reingresso: roster continua com 3 (não duplicou)");
   devices.forEach(d => d.client.sair()); p2novo.client.sair();
+}
+
+/* Identidade vinda do Firebase Auth.
+   Sem identidade o jogador é um uuid de aparelho — e é por isso que a
+   regra de segurança de salas/{cod}/jogadores/{jid} não tinha como
+   funcionar: não há o que provar sobre um uuid. Com auth.uid, o id do
+   jogador passa a ser algo que o Firestore consegue verificar. */
+async function cenarioIdentidade() {
+  DB._reset();
+
+  const ana = makeDevice(DB, "Ana", { uid: "auth-ana" });
+  const bia = makeDevice(DB, "Bia", { uid: "auth-bia" });
+
+  await ana.client.criar("MESA1", "Ana", T0Mask(), 0);
+  await settle();
+  ok(ana.client.meuId === "auth-ana", "criar sala usa o auth.uid como id do jogador");
+  ok(DB._dump()["salas/MESA1/jogadores/auth-ana"] !== undefined,
+     "o documento do jogador é indexado pelo uid");
+  ok(DB._dump()["salas/MESA1"].hostId === "auth-ana",
+     "hostId é o uid — é o que a regra compara");
+
+  await bia.client.abrir("MESA1");
+  await bia.client.entrarNovo("Bia");
+  await settle();
+  ok(bia.client.meuId === "auth-bia", "entrar como novo também usa o uid");
+  ok(ana.client.vm().membros.length === 2, "roster com 2");
+
+  /* O ganho que a migração traz de graça: trocar de celular deixa de
+     depender do localStorage daquele aparelho. */
+  const anaOutroCelular = makeDevice(DB, "Ana-b", { uid: "auth-ana" });
+  ok(anaOutroCelular.localStorage.getItem("quemsoueu:salas") === null,
+     "o aparelho novo começa sem nada salvo");
+  const res = await anaOutroCelular.client.abrir("MESA1");
+  await settle();
+  ok(res.ok === true, "logada, ela é reconhecida sem escolher da lista");
+  ok(anaOutroCelular.client.meuId === "auth-ana", "e volta como o mesmo jogador");
+  ok(anaOutroCelular.client.meuNick === "Ana", "com o nick que já tinha");
+  ok(ana.client.vm().membros.length === 2, "sem duplicar no roster");
+
+  /* Sem identidade, o comportamento antigo continua igual: uuid de
+     aparelho e escolha manual na lista. É o que mantém o convidado. */
+  const convidado = makeDevice(DB, "Convidado");
+  const r2 = await convidado.client.abrir("MESA1");
+  ok(r2.precisaNick === true, "sem login, ainda cai na lista de 'sou eu'");
+
+  [ana, bia, anaOutroCelular, convidado].forEach(d => d.client.sair());
 }
 
 async function cenarioCodigoDigitadoExistente() {
@@ -672,6 +718,7 @@ async function main() {
 
   const blocos = [
     ["reingresso de outro aparelho ('sou eu')", cenarioReingresso],
+    ["identidade do Firebase Auth (uid como id do jogador)", cenarioIdentidade],
     ["código digitado que já existe não sobrescreve", cenarioCodigoDigitadoExistente],
     ["nick repetido recusado", cenarioNickRepetido],
     ["membro desmarcado não trava a partida", cenarioAusenteNaoTrava],
