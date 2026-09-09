@@ -9,9 +9,14 @@
     "dev": "node build.js && npx firebase emulators:start",
     "deploy": "node build.js && npx firebase deploy",
     "deploy:regras": "npx firebase deploy --only firestore:rules",
-    "deploy:site": "node build.js && npx firebase deploy --only hosting"
+    "deploy:site": "node build.js && npx firebase deploy --only hosting",
+    "test:regras": "firebase emulators:exec --only firestore --project demo-quem-sou-eu \"node test-regras.js\""
   },
   "dependencies": {
     "firebase": "^12.18.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase-tools": "^15.29.0"
   }
 }

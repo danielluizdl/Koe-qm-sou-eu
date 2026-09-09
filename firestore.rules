@@ -3,24 +3,20 @@ rules_version = '2';
 /* ============================================================
    REGRAS DE SEGURANÇA — Quem Sou Eu
 
-   ⚠️  ESTADO: ESCRITAS, NÃO TESTADAS.
-   O emulador do Firestore exige Java, que não está instalado na
-   máquina onde isto foi escrito. NÃO publicar antes de rodar
-   `firebase emulators:exec` com um suite de regras. Até lá, trate
-   este arquivo como projeto, não como proteção.
+   TESTADAS: test-regras.js, contra o emulador.
+       npm run test:regras
+   Os testes são escritos da posição do atacante: cada um tenta fazer
+   algo que NÃO deveria ser possível e falha se conseguir. Provar só o
+   caminho feliz mostraria que o jogo funciona, não que ele protege.
 
    PRINCÍPIO: o cliente é hostil. Todo jogador pode abrir o console
    do navegador e chamar o Firestore direto, sem passar pelo jogo.
    Então nada que importa pode depender do código do cliente —
    sobretudo o saldo do rank.
 
-   DEPENDÊNCIA DE CÓDIGO AINDA NÃO FEITA
-   -------------------------------------
-   Hoje o jogo identifica jogador por um uuid gerado no aparelho
-   (`C.meuId`, via uuid()). Estas regras assumem que esse id passa a
-   ser o `request.auth.uid` do Firebase Auth. Enquanto isso não mudar,
-   as regras de `salas` barram tudo, porque não há como provar que o
-   jogador é quem diz ser. É a próxima tarefa de integração.
+   O jogador é identificado pelo `request.auth.uid` do Firebase Auth
+   (CriarSalaCliente recebe a identidade). Sem isso não haveria o que
+   verificar: um uuid gerado no aparelho não prova nada.
    ============================================================ */
 
 service cloud.firestore {
@@ -32,6 +28,32 @@ service cloud.firestore {
     function campos()      { return request.resource.data; }
     function anterior()    { return resource.data; }
     function mudou(cs)     { return campos().diff(anterior()).affectedKeys().hasOnly(cs); }
+
+    /* `resource` é null quando o documento ainda não existe. Toda
+       leitura do estado anterior passa por aqui antes de tocar em
+       resource.data.
+
+       NOTA sobre o log do emulador: mesmo com esta guarda, rodar os
+       testes ainda imprime "evaluation error at L..." para escritas em
+       documentos que não existem. É o avaliador verboso do emulador
+       percorrendo a árvore inteira da expressão para montar o
+       diagnóstico — não uma negação errada. O que importa está coberto:
+       os casos que DEVEM ser permitidos passam (assertSucceeds) e os
+       que devem ser negados são negados (assertFails), 50 de 50 em
+       test-regras.js. Não persiga essas linhas no log achando que são
+       bug; olhe o resultado do suite. */
+    function existia()     { return resource != null; }
+
+    /* Idem para get(): buscar um documento inexistente estoura. O
+       exists() antes custa uma leitura do orçamento da regra (o limite
+       é 10 por requisição; aqui usamos 2) e troca o estouro por um
+       false honesto. */
+    function souHostDa(codigo) {
+      return logado()
+          && exists(/databases/$(database)/documents/salas/$(codigo))
+          && get(/databases/$(database)/documents/salas/$(codigo)).data.hostId
+             == request.auth.uid;
+    }
 
     /* ---------------------------------------------------------
        perfis/{uid} — PÚBLICO pra quem está logado
@@ -53,7 +75,7 @@ service cloud.firestore {
          verificar se o saldo declarado bate com a partida — isso
          exigiria ler as partidas de todos os participantes.
          Ver "LIMITE CONHECIDO" no fim do arquivo. */
-      allow update: if eu(uid)
+      allow update: if eu(uid) && existia()
                     && campos().uid == anterior().uid
                     && mudou(['nick','nickChave','anonimo','atualizadoEm',
                               'partidas','vitorias','podios','saldo','somaAprov']);
@@ -99,9 +121,9 @@ service cloud.firestore {
       allow read: if logado();
       allow create: if logado() && campos().uid == request.auth.uid
                     && campos().chave == chave;
-      allow update: if logado() && anterior().uid == request.auth.uid
+      allow update: if logado() && existia() && anterior().uid == request.auth.uid
                     && campos().uid == request.auth.uid;
-      allow delete: if logado() && anterior().uid == request.auth.uid;
+      allow delete: if logado() && existia() && anterior().uid == request.auth.uid;
     }
 
     /* ---------------------------------------------------------
@@ -117,7 +139,7 @@ service cloud.firestore {
                    && campos().holder == request.auth.uid
                    && campos().expiresAt is int
                    && campos().expiresAt <= agora() + 600000
-                   && (resource == null
+                   && (!existia()
                        || anterior().expiresAt <= agora()
                        || anterior().holder == request.auth.uid);
     }
@@ -135,28 +157,22 @@ service cloud.firestore {
 
       /* Configuração da sala é do host. Os campos de andamento da
          partida também — quem distribui as cartas é ele. */
-      allow update: if logado() && anterior().hostId == request.auth.uid;
-      allow delete: if logado() && anterior().hostId == request.auth.uid;
+      allow update: if logado() && existia() && anterior().hostId == request.auth.uid;
+      allow delete: if logado() && existia() && anterior().hostId == request.auth.uid;
 
       /* Cada jogador escreve só o próprio documento: seu nick, se já
          revelou, quando acertou. Ninguém marca acerto por ninguém. */
       match /jogadores/{jid} {
         allow read: if logado();
-        allow create, update: if eu(jid)
-                              || get(/databases/$(database)/documents/salas/$(codigo))
-                                   .data.hostId == request.auth.uid;
-        allow delete: if eu(jid)
-                      || get(/databases/$(database)/documents/salas/$(codigo))
-                           .data.hostId == request.auth.uid;
+        allow create, update: if eu(jid) || souHostDa(codigo);
+        allow delete: if eu(jid) || souHostDa(codigo);
       }
 
       /* Histórico da sala: só o host grava (o código já garante isso
          com ehHost(); aqui vira regra de verdade). */
       match /hist/{doc} {
         allow read: if logado();
-        allow write: if logado()
-                     && get(/databases/$(database)/documents/salas/$(codigo))
-                          .data.hostId == request.auth.uid;
+        allow write: if souHostDa(codigo);
       }
     }
 
