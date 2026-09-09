@@ -10,6 +10,8 @@ const suites = [
   ["salas — interface",                "test-salas-ui.js",          {}],
   ["pontuação",                        "test-pontuacao.js",         {}],
   ["adaptador firestore",              "test-firestore-adapter.js", {}],
+  ["contas — backend capability",       "test-contas.js",            {}],
+  ["contas — backend firestore",        "test-contas.js",            { DB: "firestore" }],
   ["auditoria do baralho",             "audit.js",                  {}]
 ];
 

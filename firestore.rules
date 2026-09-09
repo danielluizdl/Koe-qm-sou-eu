@@ -1,0 +1,191 @@
+rules_version = '2';
+
+/* ============================================================
+   REGRAS DE SEGURANÇA — Quem Sou Eu
+
+   ⚠️  ESTADO: ESCRITAS, NÃO TESTADAS.
+   O emulador do Firestore exige Java, que não está instalado na
+   máquina onde isto foi escrito. NÃO publicar antes de rodar
+   `firebase emulators:exec` com um suite de regras. Até lá, trate
+   este arquivo como projeto, não como proteção.
+
+   PRINCÍPIO: o cliente é hostil. Todo jogador pode abrir o console
+   do navegador e chamar o Firestore direto, sem passar pelo jogo.
+   Então nada que importa pode depender do código do cliente —
+   sobretudo o saldo do rank.
+
+   DEPENDÊNCIA DE CÓDIGO AINDA NÃO FEITA
+   -------------------------------------
+   Hoje o jogo identifica jogador por um uuid gerado no aparelho
+   (`C.meuId`, via uuid()). Estas regras assumem que esse id passa a
+   ser o `request.auth.uid` do Firebase Auth. Enquanto isso não mudar,
+   as regras de `salas` barram tudo, porque não há como provar que o
+   jogador é quem diz ser. É a próxima tarefa de integração.
+   ============================================================ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado()      { return request.auth != null; }
+    function eu(uid)       { return logado() && request.auth.uid == uid; }
+    function agora()       { return request.time.toMillis(); }
+    function campos()      { return request.resource.data; }
+    function anterior()    { return resource.data; }
+    function mudou(cs)     { return campos().diff(anterior()).affectedKeys().hasOnly(cs); }
+
+    /* ---------------------------------------------------------
+       perfis/{uid} — PÚBLICO pra quem está logado
+       Nick e agregado do rank. Sem nada pessoal: é justamente por
+       isso que a leitura pode ser aberta, e é o que permite montar
+       o rank de amigos com uma leitura por amigo.
+       --------------------------------------------------------- */
+    match /perfis/{uid} {
+      allow read: if logado();
+
+      allow create: if eu(uid)
+                    && campos().uid == uid
+                    && campos().partidas == 0
+                    && campos().saldo == 0
+                    && campos().vitorias == 0
+                    && campos().anonimo == false;
+
+      /* O dono atualiza o próprio agregado. A regra NÃO consegue
+         verificar se o saldo declarado bate com a partida — isso
+         exigiria ler as partidas de todos os participantes.
+         Ver "LIMITE CONHECIDO" no fim do arquivo. */
+      allow update: if eu(uid)
+                    && campos().uid == anterior().uid
+                    && mudou(['nick','nickChave','anonimo','atualizadoEm',
+                              'partidas','vitorias','podios','saldo','somaAprov']);
+
+      /* Nunca some: salas são permanentes e o histórico depende dele.
+         Encerrar conta ANONIMIZA (update), não apaga. */
+      allow delete: if false;
+    }
+
+    /* ---------------------------------------------------------
+       usuarios/{uid} — PRIVADO. Nome e e-mail, só o dono.
+       --------------------------------------------------------- */
+    match /usuarios/{uid} {
+      allow read, write: if eu(uid);
+
+      /* amigos: o dono manda no que é seu. A exceção que faz o
+         pedido de amizade funcionar: outra pessoa pode escrever a
+         aresta cujo ID É O UID DELA. Ou seja, dá pra criar um
+         vínculo que aponta pra si mesmo, nunca pra terceiros —
+         então ninguém "adiciona" duas pessoas uma na outra. */
+      match /amigos/{outro} {
+        allow read: if eu(uid);
+        allow create, update: if eu(uid)
+                              || (eu(outro) && campos().uid == request.auth.uid);
+        allow delete: if eu(uid) || eu(outro);
+      }
+
+      /* partidas: histórico imutável do jogador. Escreve uma vez e
+         nunca mais muda — é a fonte de verdade que permite recalcular
+         o agregado se ele se perder ou for adulterado. */
+      match /partidas/{pid} {
+        allow read: if eu(uid);
+        allow create: if eu(uid) && campos().pid == pid;
+        allow update, delete: if false;
+      }
+    }
+
+    /* ---------------------------------------------------------
+       nicks/{chave} — índice de unicidade, legível por quem está
+       logado (é como se adiciona amigo por nick).
+       --------------------------------------------------------- */
+    match /nicks/{chave} {
+      allow read: if logado();
+      allow create: if logado() && campos().uid == request.auth.uid
+                    && campos().chave == chave;
+      allow update: if logado() && anterior().uid == request.auth.uid
+                    && campos().uid == request.auth.uid;
+      allow delete: if logado() && anterior().uid == request.auth.uid;
+    }
+
+    /* ---------------------------------------------------------
+       _locks/{chave} — leases do acquire() do adaptador.
+       Só ganha o lease quem: assina com o próprio uid, e encontra o
+       lease livre, vencido ou já dele. O teto de 10 min no expiresAt
+       impede que alguém escreva uma data no ano 3000 e sente em cima
+       de um nick ou código de sala pra sempre.
+       --------------------------------------------------------- */
+    match /_locks/{chave} {
+      allow read: if logado();
+      allow write: if logado()
+                   && campos().holder == request.auth.uid
+                   && campos().expiresAt is int
+                   && campos().expiresAt <= agora() + 600000
+                   && (resource == null
+                       || anterior().expiresAt <= agora()
+                       || anterior().holder == request.auth.uid);
+    }
+
+    /* ---------------------------------------------------------
+       salas/{codigo} — estado ao vivo da mesa.
+
+       ⚠️  DEPENDE da migração de meuId -> auth.uid descrita no topo.
+       Enquanto os jogadores forem identificados por uuid de aparelho,
+       `eu(id)` nunca casa e estas regras barram o jogo inteiro.
+       --------------------------------------------------------- */
+    match /salas/{codigo} {
+      allow read: if logado();
+      allow create: if logado() && campos().hostId == request.auth.uid;
+
+      /* Configuração da sala é do host. Os campos de andamento da
+         partida também — quem distribui as cartas é ele. */
+      allow update: if logado() && anterior().hostId == request.auth.uid;
+      allow delete: if logado() && anterior().hostId == request.auth.uid;
+
+      /* Cada jogador escreve só o próprio documento: seu nick, se já
+         revelou, quando acertou. Ninguém marca acerto por ninguém. */
+      match /jogadores/{jid} {
+        allow read: if logado();
+        allow create, update: if eu(jid)
+                              || get(/databases/$(database)/documents/salas/$(codigo))
+                                   .data.hostId == request.auth.uid;
+        allow delete: if eu(jid)
+                      || get(/databases/$(database)/documents/salas/$(codigo))
+                           .data.hostId == request.auth.uid;
+      }
+
+      /* Histórico da sala: só o host grava (o código já garante isso
+         com ehHost(); aqui vira regra de verdade). */
+      match /hist/{doc} {
+        allow read: if logado();
+        allow write: if logado()
+                     && get(/databases/$(database)/documents/salas/$(codigo))
+                          .data.hostId == request.auth.uid;
+      }
+    }
+
+    /* Nada mais existe. Sem esta linha, um caminho esquecido fica
+       aberto por omissão. */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+/* ============================================================
+   LIMITE CONHECIDO — o agregado é declarado pelo próprio jogador
+
+   `perfis/{uid}.saldo` é escrito pelo dono. Uma regra não consegue
+   provar que o saldo declarado corresponde a uma partida real: para
+   isso ela teria de ler as partidas de todos os participantes, e
+   regra do Firestore tem orçamento de leitura pequeno.
+
+   Consequência: alguém com conhecimento técnico consegue inflar o
+   próprio saldo pelo console do navegador.
+
+   Por que isso é aceitável AGORA: o rank é entre amigos, num jogo
+   presencial. Quem trapaceia trapaceia contra gente que está do lado
+   dele, e as partidas ficam gravadas em `usuarios/{uid}/partidas`,
+   imutáveis — dá pra recalcular e ver a divergência (A.recalcular()).
+
+   Se um dia isso incomodar, a correção é mover a gravação do agregado
+   pra uma Cloud Function que lê a sala e valida o resultado. Aí o
+   cliente perde a escrita em `saldo` e o problema acaba. É uma troca
+   de custo (Functions exigem o plano Blaze), não de arquitetura.
+   ============================================================ */
