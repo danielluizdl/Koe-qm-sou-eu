@@ -229,6 +229,34 @@
     font-family:var(--f-ui);font-size:1.1rem;font-weight:700;
   }
   .field.mono{font-family:var(--f-mono);text-transform:uppercase;letter-spacing:.14em;text-align:center}
+  .field.ruim{border-color:var(--accent)}
+
+  /* rótulo em cima do campo: com cinco campos na tela, placeholder não
+     basta — ele some quando a pessoa começa a digitar, e aí ninguém
+     lembra qual campo é qual. */
+  .campo{display:flex;flex-direction:column;gap:6px}
+  .campo>label{
+    font-size:.72rem;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--ink-3);
+  }
+  .campo .dica{color:var(--ink-3);font-size:.8rem;line-height:1.35;margin:0}
+  .campo .erro{color:var(--accent);font-size:.84rem;font-weight:600;margin:0}
+  .campo .erro:empty{display:none}
+
+  /* senha + botão do olho */
+  .senha{position:relative;display:flex}
+  .senha .field{padding-right:56px}
+  .senha .olho{
+    position:absolute;right:6px;top:50%;transform:translateY(-50%);
+    width:44px;height:44px;border:none;background:transparent;cursor:pointer;
+    display:grid;place-items:center;border-radius:12px;color:var(--ink-3);
+  }
+  .senha .olho:hover{color:var(--ink)}
+  .senha .olho svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;
+    stroke-linecap:round;stroke-linejoin:round}
+  .senha .olho .cortado{display:none}
+  .senha .olho[aria-pressed="true"] .cortado{display:block}
+  .senha .olho[aria-pressed="true"] .aberto{display:none}
   textarea.field{min-height:96px;padding:12px 16px;font-weight:500;font-size:1rem;line-height:1.45;resize:vertical}
   .rows{display:flex;flex-direction:column;gap:8px}
   .rows:empty{display:none}
@@ -593,60 +621,112 @@
   </section>
 
   <section class="screen" id="s-conta">
-    <div class="topbar"><button class="back" data-back="s-home">← Voltar</button></div>
+    <div class="topbar"><button class="back" id="conta-back" data-back="s-home">← Voltar</button></div>
 
-    <!-- deslogado: pedir o link -->
+    <!-- ENTRAR -->
     <div class="mid" id="conta-login" hidden>
       <div class="stack" style="gap:8px">
         <p class="eyebrow">Sua conta</p>
-        <h2>Entrar sem senha</h2>
-        <p class="lede">Digite seu e-mail e a gente manda um link. Tocou no link, entrou — não tem senha pra esquecer.</p>
+        <h2>Entrar</h2>
       </div>
-      <input id="conta-email" class="field" type="email" inputmode="email" autocomplete="email"
-             autocorrect="off" spellcheck="false" aria-label="Seu e-mail" placeholder="voce@exemplo.com">
-      <p class="err" id="conta-err" role="status"></p>
-      <p class="note" id="conta-aviso" hidden></p>
+      <div class="campo">
+        <label for="login-email">E-mail</label>
+        <input id="login-email" class="field" type="email" inputmode="email"
+               autocomplete="email" autocorrect="off" spellcheck="false">
+      </div>
+      <div class="campo">
+        <label for="login-senha">Senha</label>
+        <div class="senha">
+          <input id="login-senha" class="field" type="password" inputmode="numeric"
+                 maxlength="6" autocomplete="current-password">
+          <button type="button" class="olho" id="login-olho" aria-pressed="false"
+                  aria-label="Mostrar senha">
+            <svg viewBox="0 0 24 24" class="aberto" aria-hidden="true"><path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg>
+            <svg viewBox="0 0 24 24" class="cortado" aria-hidden="true"><path d="M1.5 12S5 5.5 12 5.5c1.6 0 3 .35 4.2.9M22.5 12S19 18.5 12 18.5c-1.6 0-3-.35-4.2-.9"/><path d="M4 4l16 16"/></svg>
+          </button>
+        </div>
+      </div>
+      <p class="err" id="login-err" role="status"></p>
+      <button class="linkbtn" id="login-esqueci">Esqueci minha senha</button>
     </div>
 
-    <!-- link enviado -->
-    <div class="mid" id="conta-enviado" hidden>
+    <!-- CRIAR CONTA -->
+    <div class="mid" id="conta-cadastro" hidden>
       <div class="stack" style="gap:8px">
-        <p class="eyebrow">Quase lá</p>
-        <h2>Olha seu e-mail</h2>
-        <p class="lede" id="conta-enviado-txt"></p>
-        <p class="note">Se não chegar em um minuto, veja no spam. O link vale uma vez só.</p>
+        <p class="eyebrow">Sua conta</p>
+        <h2>Criar conta</h2>
       </div>
+
+      <div class="campo">
+        <label for="cad-nome">Nome e sobrenome</label>
+        <input id="cad-nome" class="field" maxlength="60" autocomplete="name" autocorrect="off">
+        <p class="erro" id="cad-nome-erro"></p>
+      </div>
+
+      <div class="campo">
+        <label for="cad-nick">Apelido</label>
+        <input id="cad-nick" class="field" maxlength="20" autocomplete="off"
+               autocorrect="off" spellcheck="false" autocapitalize="none">
+        <p class="dica">É por ele que seus amigos vão te achar.</p>
+        <p class="erro" id="cad-nick-erro"></p>
+      </div>
+
+      <div class="campo">
+        <label for="cad-email">E-mail</label>
+        <input id="cad-email" class="field" type="email" inputmode="email"
+               autocomplete="email" autocorrect="off" spellcheck="false">
+        <p class="erro" id="cad-email-erro"></p>
+      </div>
+
+      <div class="campo" id="cad-campo-senha">
+        <label for="cad-senha">Senha</label>
+        <div class="senha">
+          <input id="cad-senha" class="field" type="password" inputmode="numeric"
+                 maxlength="6" autocomplete="new-password">
+          <button type="button" class="olho" id="cad-olho" aria-pressed="false"
+                  aria-label="Mostrar senha">
+            <svg viewBox="0 0 24 24" class="aberto" aria-hidden="true"><path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg>
+            <svg viewBox="0 0 24 24" class="cortado" aria-hidden="true"><path d="M1.5 12S5 5.5 12 5.5c1.6 0 3 .35 4.2.9M22.5 12S19 18.5 12 18.5c-1.6 0-3-.35-4.2-.9"/><path d="M4 4l16 16"/></svg>
+          </button>
+        </div>
+        <p class="dica">6 números.</p>
+        <p class="erro" id="cad-senha-erro"></p>
+      </div>
+
+      <div class="campo" id="cad-campo-senha2">
+        <label for="cad-senha2">Confirmar senha</label>
+        <div class="senha">
+          <input id="cad-senha2" class="field" type="password" inputmode="numeric"
+                 maxlength="6" autocomplete="new-password">
+          <button type="button" class="olho" id="cad-olho2" aria-pressed="false"
+                  aria-label="Mostrar senha">
+            <svg viewBox="0 0 24 24" class="aberto" aria-hidden="true"><path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg>
+            <svg viewBox="0 0 24 24" class="cortado" aria-hidden="true"><path d="M1.5 12S5 5.5 12 5.5c1.6 0 3 .35 4.2.9M22.5 12S19 18.5 12 18.5c-1.6 0-3-.35-4.2-.9"/><path d="M4 4l16 16"/></svg>
+          </button>
+        </div>
+        <p class="erro" id="cad-senha2-erro"></p>
+      </div>
+
+      <p class="err" id="cad-err" role="status"></p>
     </div>
 
-    <!-- logado, sem perfil: escolher nick -->
-    <div class="mid" id="conta-novo" hidden>
-      <div class="stack" style="gap:8px">
-        <p class="eyebrow">Falta pouco</p>
-        <h2>Escolha seu apelido</h2>
-        <p class="lede">É por ele que seus amigos vão te achar. De 3 a 16 letras, sem espaço — e é único no jogo inteiro.</p>
-      </div>
-      <input id="conta-nick" class="field" maxlength="20" autocomplete="off"
-             autocorrect="off" spellcheck="false" aria-label="Seu apelido">
-      <input id="conta-nome" class="field" maxlength="40" autocomplete="name"
-             aria-label="Seu nome" placeholder="seu nome (opcional)">
-      <p class="err" id="conta-novo-err" role="status"></p>
-    </div>
-
-    <!-- logado, com perfil -->
+    <!-- PERFIL -->
     <div class="mid" id="conta-perfil" hidden>
       <div class="stack" style="gap:8px">
         <p class="eyebrow">Sua conta</p>
         <h2 id="conta-perfil-nick"></h2>
+        <p class="note" id="conta-perfil-nome"></p>
         <p class="note" id="conta-perfil-email"></p>
       </div>
       <div class="rows" id="conta-numeros"></div>
-      <p class="note" id="conta-perfil-vazio" hidden>Você ainda não terminou nenhuma partida com a conta ligada.</p>
+      <p class="note" id="conta-perfil-vazio" hidden>Você ainda não terminou nenhuma partida.</p>
     </div>
 
     <div class="foot">
-      <button class="btn" id="conta-enviar" hidden>Mandar o link</button>
-      <button class="btn" id="conta-criar" hidden>Criar minha conta</button>
+      <button class="btn" id="login-ok" hidden>Entrar</button>
+      <button class="btn" id="cad-ok" hidden>Criar conta</button>
       <button class="btn" id="conta-amigos" hidden>Meus amigos</button>
+      <button class="linkbtn" id="conta-trocar" hidden></button>
       <button class="linkbtn" id="conta-sair" hidden>Sair da conta</button>
     </div>
   </section>
@@ -670,8 +750,8 @@
     <div id="amigos-painel-lista" hidden>
       <div class="stack" style="gap:10px">
         <input id="amigos-busca" class="field" maxlength="20" autocomplete="off"
-               autocorrect="off" spellcheck="false" aria-label="Apelido do amigo"
-               placeholder="apelido de quem você quer adicionar">
+               autocorrect="off" spellcheck="false" autocapitalize="none"
+               aria-label="Apelido do amigo" placeholder="apelido de quem você quer adicionar">
         <button class="btn ghost" id="amigos-add">Adicionar</button>
         <p class="err" id="amigos-err" role="status"></p>
       </div>
@@ -1088,13 +1168,29 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   /* reconstrói a grade em vez de só trocar de tela: numa sessão retomada,
      s-slot nunca foi preenchida */
   $("card-back").addEventListener("click", function(){ openSlots(); });
+  /* Criar jogo e entrar com código exigem conta. `exigirConta` faz na
+     hora se já estiver logado; se não, leva pro cadastro e guarda a
+     intenção pra continuar sozinho assim que a conta ficar pronta.
+
+     Quando não há Firebase (rodando como Artifact, ou offline), não há
+     conta possível — e aí a porta fica aberta, senão o jogo simplesmente
+     não abriria. */
+  function comConta(oQue){
+    if (!CONTA.api){ oQue(); return; }
+    exigirConta(oQue);
+  }
+
   $("go-create").addEventListener("click", function(){
-    if (ONLINE){ abrirCriarOnline(); return; }
-    abrirCriarSemDb();
+    comConta(function(){
+      if (ONLINE){ abrirCriarOnline(); return; }
+      abrirCriarSemDb();
+    });
   });
   $("go-join").addEventListener("click", function(){
-    show("s-entrar");
-    setTimeout(function(){ $("entrar-input").focus(); }, 250);
+    comConta(function(){
+      show("s-entrar");
+      setTimeout(function(){ $("entrar-input").focus(); }, 250);
+    });
   });
 
   $("do-create").addEventListener("click", function(){
@@ -1942,73 +2038,160 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   }
 
   /* ============================================================
-     CONTA E AMIGOS
-     Só acende quando o Firebase responde. Sem conta, o jogo inteiro
-     continua funcionando como convidado — é assim desde sempre e
-     continua sendo: a conta acrescenta rank e permanência, não é
-     pedágio pra jogar.
+     CONTA E AMIGOS — e-mail e senha
+
+     A conta deixou de ser opcional: sem login não dá pra criar jogo
+     nem entrar com código. O que continua funcionando sem ela é só o
+     que chega por link pronto (alguém já te convidou), porque barrar
+     isso quebraria o convite de quem já está com o celular na mão.
      ============================================================ */
 
   var CONTA = {
     api: null,        // CriarContas(db)
     ident: null,      // {uid, email} do Firebase Auth
     perfil: null,     // perfis/{uid} + dados privados do dono
-    aba: "rank"
+    modo: "login",    // "login" | "cadastro"
+    aba: "rank",
+    apos: null        // o que fazer assim que logar
   };
 
   function contaLigada(){ return !!(CONTA.api && CONTA.ident); }
+  function contaCompleta(){ return !!(contaLigada() && CONTA.perfil); }
 
-  function contaErro(id, msg){
+  function txt(id, msg){ var el = $(id); if (el) el.textContent = msg || ""; }
+  function marcarCampo(id, ruim){
     var el = $(id);
-    if (el) el.textContent = msg || "";
+    if (el) el.classList.toggle("ruim", !!ruim);
   }
 
-  /* Traduz os códigos do contas.js pra frase que a pessoa entende.
-     Mensagem de erro tem que dizer o que houve E o que fazer. */
-  function contaMotivo(e){
+  /* Códigos do Firebase Auth viram frases que dizem o que fazer. */
+  function motivoAuth(e){
     var c = e && e.code;
-    if (c === "nick_em_uso")     return "Esse apelido já é de outra pessoa. Tente outro.";
-    if (c === "nick_invalido")   return "O apelido precisa de 3 a 16 letras ou números.";
-    if (c === "email_invalido")  return "Esse e-mail não parece certo.";
-    if (c === "ja_existe")       return "Você já tem uma conta.";
-    if (c === "sem_perfil")      return "Não achei essa conta.";
-    if (c === "conta_removida")  return "Essa conta foi encerrada.";
-    if (c === "amigo_de_si")     return "Esse é você.";
-    if (c === "sem_pedido")      return "Não há pedido dessa pessoa.";
+    if (c === "auth/email-already-in-use") return "Esse e-mail já tem conta. Toque em “Já tenho conta”.";
+    if (c === "auth/invalid-email")        return "Esse e-mail não parece certo.";
+    if (c === "auth/weak-password")        return "A senha precisa de 6 números.";
+    if (c === "auth/invalid-credential" ||
+        c === "auth/wrong-password" ||
+        c === "auth/user-not-found")       return "E-mail ou senha não conferem.";
+    if (c === "auth/too-many-requests")    return "Muitas tentativas. Espere um minuto.";
+    if (c === "auth/network-request-failed") return "Sem conexão. Tente de novo.";
+    if (c === "auth/operation-not-allowed") return "O login por senha está desligado no Firebase.";
+    return "Não consegui agora. Tente de novo.";
+  }
+  function motivoConta(e){
+    var c = e && e.code;
+    if (c === "nick_em_uso")    return "Esse apelido já está sendo usado.";
+    if (c === "nick_invalido")  return "O apelido precisa de 2 a 16 letras ou números.";
+    if (c === "nome_invalido")  return "Escreva nome e sobrenome.";
+    if (c === "email_invalido") return "Esse e-mail não parece certo.";
+    if (c === "ja_existe")      return "Você já tem uma conta.";
+    if (c === "conta_removida") return "Essa conta foi encerrada.";
+    if (c === "amigo_de_si")    return "Esse é você.";
+    if (c === "sem_pedido")     return "Não há pedido dessa pessoa.";
     if (c === "permission-denied") return "Sem permissão pra isso.";
     return "Não consegui agora. Tente de novo.";
   }
 
-  /* ---- pintura da tela de conta ---- */
-  function pintarConta(){
-    var login = $("conta-login"), enviado = $("conta-enviado");
-    var novo = $("conta-novo"), perfil = $("conta-perfil");
-    var bEnviar = $("conta-enviar"), bCriar = $("conta-criar");
-    var bAmigos = $("conta-amigos"), bSair = $("conta-sair");
-    if (!login) return;
+  /* ---- validação campo a campo ----
+     Cada função devolve "" quando está bom, ou a frase do erro. Elas
+     rodam quando a pessoa sai do campo e de novo no envio, pra ninguém
+     descobrir cinco problemas de uma vez. */
+  var NS_CONTAS = null;
+  function contasNS(){
+    if (!NS_CONTAS && typeof window !== "undefined" && window.CONTAS) NS_CONTAS = window.CONTAS;
+    return NS_CONTAS;
+  }
+  function erroNome(v){
+    var N = contasNS();
+    if (!String(v || "").replace(/^\s+|\s+$/g, "")) return "Preencha seu nome.";
+    if (N && !N.nomeValido(v)) return "Escreva nome e sobrenome.";
+    return "";
+  }
+  function erroNick(v){
+    var N = contasNS();
+    if (!String(v || "").replace(/^\s+|\s+$/g, "")) return "Escolha um apelido.";
+    if (N && !N.nickValido(v)) return "De 2 a 16 letras ou números, sem espaço.";
+    return "";
+  }
+  function erroEmail(v){
+    var N = contasNS();
+    if (!String(v || "").replace(/^\s+|\s+$/g, "")) return "Preencha seu e-mail.";
+    if (N && !N.emailValido(v)) return "Falta o @ e o domínio, tipo nome@email.com.";
+    return "";
+  }
+  function erroSenha(v){
+    if (!v) return "Escolha uma senha.";
+    if (!/^[0-9]{6}$/.test(v)) return "A senha é de 6 números.";
+    return "";
+  }
+  function erroSenha2(a, b){
+    if (!b) return "Repita a senha.";
+    if (a !== b) return "As senhas estão diferentes.";
+    return "";
+  }
 
-    var telas = [login, enviado, novo, perfil];
-    for (var i = 0; i < telas.length; i++) telas[i].hidden = true;
-    bEnviar.hidden = bCriar.hidden = bAmigos.hidden = bSair.hidden = true;
+  function validarCadastro(){
+    var v = {
+      nome: $("cad-nome").value, nick: $("cad-nick").value,
+      email: $("cad-email").value, senha: $("cad-senha").value, senha2: $("cad-senha2").value
+    };
+    var es = {
+      "cad-nome": erroNome(v.nome), "cad-nick": erroNick(v.nick),
+      "cad-email": erroEmail(v.email), "cad-senha": erroSenha(v.senha),
+      "cad-senha2": erroSenha2(v.senha, v.senha2)
+    };
+    var k, algum = false;
+    for (k in es){
+      if (!Object.prototype.hasOwnProperty.call(es, k)) continue;
+      txt(k + "-erro", es[k]);
+      marcarCampo(k, !!es[k]);
+      if (es[k]) algum = true;
+    }
+    return algum ? null : v;
+  }
+
+  /* ---- pintura ---- */
+  function pintarConta(){
+    var login = $("conta-login"), cad = $("conta-cadastro"), perfil = $("conta-perfil");
+    if (!login) return;
+    var bLogin = $("login-ok"), bCad = $("cad-ok");
+    var bAmigos = $("conta-amigos"), bTrocar = $("conta-trocar"), bSair = $("conta-sair");
+
+    login.hidden = cad.hidden = perfil.hidden = true;
+    bLogin.hidden = bCad.hidden = bAmigos.hidden = bTrocar.hidden = bSair.hidden = true;
 
     if (!CONTA.ident){
-      login.hidden = false;
-      bEnviar.hidden = false;
-      var em = $("conta-email");
-      if (em && !em.value) em.value = ultimoEmail();
+      if (CONTA.modo === "cadastro"){
+        cad.hidden = false; bCad.hidden = false;
+        bTrocar.hidden = false; bTrocar.textContent = "Já tenho conta";
+      } else {
+        login.hidden = false; bLogin.hidden = false;
+        bTrocar.hidden = false; bTrocar.textContent = "Criar uma conta";
+      }
       return;
     }
+
+    /* Logado mas sem perfil: acontece se o cadastro cair entre criar a
+       conta no Auth e gravar o perfil. Volta pro formulário com o
+       e-mail já preenchido e travado. */
     if (!CONTA.perfil){
-      novo.hidden = false;
-      bCriar.hidden = bSair.hidden = false;
-      var nk = $("conta-nick");
-      if (nk && !nk.value) nk.value = ultimoNick();
+      CONTA.modo = "cadastro";
+      cad.hidden = false; bCad.hidden = false; bSair.hidden = false;
+      var ce = $("cad-email");
+      ce.value = CONTA.ident.email || ce.value;
+      ce.disabled = true;
+      /* A senha já existe no Auth; aqui só falta o perfil. Some com os
+         campos e preenche com algo válido pra validação não travar. */
+      $("cad-senha").value = "000000"; $("cad-senha2").value = "000000";
+      $("cad-campo-senha").hidden = true;
+      $("cad-campo-senha2").hidden = true;
       return;
     }
 
     perfil.hidden = false;
     bAmigos.hidden = bSair.hidden = false;
     $("conta-perfil-nick").textContent = CONTA.perfil.nick;
+    $("conta-perfil-nome").textContent = CONTA.perfil.nome || "";
     $("conta-perfil-email").textContent = CONTA.perfil.email || "";
 
     var p = CONTA.perfil, jogou = (p.partidas || 0) > 0;
@@ -2016,12 +2199,9 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     var box = $("conta-numeros");
     box.innerHTML = "";
     if (!jogou) return;
-
     var aprov = p.partidas ? (p.somaAprov || 0) / p.partidas : 0.5;
-    linhaNumero(box, "Saldo", (p.saldo > 0 ? "+" : "") + p.saldo,
-      "quanto você tirou de vantagem sobre o esperado");
-    linhaNumero(box, "Aproveitamento", Math.round(aprov * 100) + "%",
-      "50% é o que a sorte daria");
+    linhaNumero(box, "Saldo", (p.saldo > 0 ? "+" : "") + p.saldo, "vantagem sobre o esperado");
+    linhaNumero(box, "Aproveitamento", Math.round(aprov * 100) + "%", "50% é o que a sorte daria");
     linhaNumero(box, "Partidas", String(p.partidas), "");
     linhaNumero(box, "Vitórias", String(p.vitorias || 0), "");
   }
@@ -2029,32 +2209,34 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   function linhaNumero(box, rotulo, valor, sub){
     var row = document.createElement("div");
     row.className = "row";
-    row.innerHTML = '<span class="grow"><b></b><span class="sub"></span></span>' +
-                    '<span class="pos"></span>';
+    row.innerHTML = '<span class="grow"><b></b><span class="sub"></span></span><span class="pos"></span>';
     row.querySelector("b").textContent = rotulo;
     row.querySelectorAll("span")[1].textContent = sub || "";
     row.querySelector(".pos").textContent = valor;
     box.appendChild(row);
   }
 
-  function ultimoEmail(){
-    try { return localStorage.getItem("quemsoueu:email-pendente") || ""; } catch(e){ return ""; }
-  }
-
-  /* ---- carregar o perfil do uid logado ---- */
   function carregarPerfil(){
-    if (!contaLigada()) { CONTA.perfil = null; pintarConta(); pintarHome(); return; }
+    if (!contaLigada()){ CONTA.perfil = null; pintarConta(); pintarHome(); return; }
     CONTA.api.perfil(CONTA.ident.uid).then(function(p){
       CONTA.perfil = p;
       pintarConta(); pintarHome();
-    }, function(){
-      CONTA.perfil = null; pintarConta(); pintarHome();
-    });
+      if (p && CONTA.apos){ var f = CONTA.apos; CONTA.apos = null; f(); }
+    }, function(){ CONTA.perfil = null; pintarConta(); pintarHome(); });
+  }
+
+  /* Porta de entrada: se já está tudo certo, faz. Se não, manda logar
+     e guarda o que a pessoa queria pra fazer assim que ela voltar. */
+  function exigirConta(oQue){
+    if (contaCompleta()){ oQue(); return; }
+    CONTA.apos = oQue;
+    show("s-conta");
+    pintarConta();
   }
 
   /* ---- amigos ---- */
   function pintarAmigos(){
-    if (!contaLigada() || !CONTA.perfil) return;
+    if (!contaCompleta()) return;
     var ehRank = CONTA.aba === "rank";
     $("aba-rank").setAttribute("aria-pressed", ehRank ? "true" : "false");
     $("aba-lista").setAttribute("aria-pressed", ehRank ? "false" : "true");
@@ -2065,25 +2247,23 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   function pintarRank(){
     CONTA.api.rankAmigos(CONTA.ident.uid).then(function(linhas){
-      var box = $("amigos-rank");
-      box.innerHTML = "";
-      var comJogo = [];
-      for (var i = 0; i < linhas.length; i++) if (linhas[i].partidas > 0) comJogo.push(linhas[i]);
+      var box = $("amigos-rank"); box.innerHTML = "";
+      var comJogo = [], i;
+      for (i = 0; i < linhas.length; i++) if (linhas[i].partidas > 0) comJogo.push(linhas[i]);
       $("amigos-rank-vazio").hidden = comJogo.length > 0;
-      for (var k = 0; k < comJogo.length; k++){
-        var r = comJogo[k];
+      for (i = 0; i < comJogo.length; i++){
+        var r = comJogo[i];
         var row = document.createElement("div");
-        row.className = "row";
+        row.className = "row" + (r.eu ? " eu" : "");
         row.innerHTML = '<span class="pos"></span>' +
-          '<span class="grow"><b></b><span class="sub"></span></span>' +
-          '<span class="pos"></span>';
-        var celulas = row.querySelectorAll(".pos");
-        celulas[0].textContent = r.posicao + "º";
+          '<span class="grow"><b></b><span class="sub"></span></span><span class="pos"></span>';
+        var cel = row.querySelectorAll(".pos");
+        cel[0].textContent = r.posicao + "º";
         row.querySelector("b").textContent = r.nick + (r.eu ? " (você)" : "");
         row.querySelectorAll("span")[2].textContent =
           Math.round(r.aproveitamento * 100) + "% · " + r.partidas +
           (r.partidas === 1 ? " partida" : " partidas");
-        celulas[1].textContent = (r.saldo > 0 ? "+" : "") + r.saldo;
+        cel[1].textContent = (r.saldo > 0 ? "+" : "") + r.saldo;
         box.appendChild(row);
       }
     }, function(){});
@@ -2104,9 +2284,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
           var sim = document.createElement("button");
           sim.className = "linkbtn"; sim.type = "button"; sim.textContent = "aceitar";
           sim.addEventListener("click", function(){
-            CONTA.api.aceitar(uid, p.uid).then(pintarAmigos, function(e){
-              toast(contaMotivo(e));
-            });
+            CONTA.api.aceitar(uid, p.uid).then(pintarAmigos, function(e){ toast(motivoConta(e)); });
           });
           var nao = document.createElement("button");
           nao.className = "linkbtn"; nao.type = "button"; nao.textContent = "recusar";
@@ -2120,8 +2298,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     }, function(){});
 
     CONTA.api.amigos(uid).then(function(as){
-      var box = $("amigos-lista");
-      box.innerHTML = "";
+      var box = $("amigos-lista"); box.innerHTML = "";
       $("amigos-lista-vazio").hidden = as.length > 0;
       for (var i = 0; i < as.length; i++){
         (function(a){
@@ -2141,62 +2318,140 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     }, function(){});
   }
 
-  /* ---- ligações de tela ---- */
+  /* ---- olho da senha ---- */
+  function ligarOlho(idBotao, idCampo){
+    var b = $(idBotao), c = $(idCampo);
+    if (!b || !c) return;
+    b.addEventListener("click", function(){
+      var mostrando = b.getAttribute("aria-pressed") === "true";
+      b.setAttribute("aria-pressed", mostrando ? "false" : "true");
+      b.setAttribute("aria-label", mostrando ? "Mostrar senha" : "Ocultar senha");
+      c.type = mostrando ? "password" : "text";
+      c.focus();
+    });
+  }
+
+  /* ---- ligações ---- */
   function ligarConta(){
     var go = $("go-conta");
     if (go) go.addEventListener("click", function(){ show("s-conta"); pintarConta(); });
 
-    var enviar = $("conta-enviar");
-    if (enviar) enviar.addEventListener("click", function(){
-      var QF = window.QSE_FIREBASE;
-      if (!QF) return;
-      var email = ($("conta-email").value || "").trim();
-      contaErro("conta-err", "");
-      enviar.disabled = true;
-      QF.enviarLink(email).then(function(e){
-        $("conta-enviado-txt").textContent = "Mandamos um link para " + e + ".";
-        $("conta-login").hidden = true;
-        $("conta-enviado").hidden = false;
-        enviar.hidden = true; enviar.disabled = false;
-      }, function(err){
-        enviar.disabled = false;
-        contaErro("conta-err", (err && err.message === "e-mail inválido")
-          ? "Esse e-mail não parece certo."
-          : "Não consegui mandar o link agora. Confira o e-mail e tente de novo.");
-      });
+    ligarOlho("login-olho", "login-senha");
+    ligarOlho("cad-olho", "cad-senha");
+    ligarOlho("cad-olho2", "cad-senha2");
+
+    var trocar = $("conta-trocar");
+    if (trocar) trocar.addEventListener("click", function(){
+      CONTA.modo = CONTA.modo === "cadastro" ? "login" : "cadastro";
+      txt("login-err", ""); txt("cad-err", "");
+      pintarConta();
     });
 
-    var criar = $("conta-criar");
-    if (criar) criar.addEventListener("click", function(){
-      if (!contaLigada()) return;
-      contaErro("conta-novo-err", "");
-      criar.disabled = true;
-      CONTA.api.criar(CONTA.ident.uid, {
-        nick: $("conta-nick").value,
-        nome: $("conta-nome").value,
-        email: CONTA.ident.email
+    /* valida ao sair do campo: erro na hora, não no fim */
+    var aoSair = [
+      ["cad-nome",   function(){ txt("cad-nome-erro", erroNome($("cad-nome").value));
+                                 marcarCampo("cad-nome", erroNome($("cad-nome").value)); }],
+      ["cad-nick",   function(){ txt("cad-nick-erro", erroNick($("cad-nick").value));
+                                 marcarCampo("cad-nick", erroNick($("cad-nick").value)); }],
+      ["cad-email",  function(){ txt("cad-email-erro", erroEmail($("cad-email").value));
+                                 marcarCampo("cad-email", erroEmail($("cad-email").value)); }],
+      ["cad-senha",  function(){ txt("cad-senha-erro", erroSenha($("cad-senha").value));
+                                 marcarCampo("cad-senha", erroSenha($("cad-senha").value)); }],
+      ["cad-senha2", function(){ var e = erroSenha2($("cad-senha").value, $("cad-senha2").value);
+                                 txt("cad-senha2-erro", e); marcarCampo("cad-senha2", e); }]
+    ];
+    for (var i = 0; i < aoSair.length; i++){
+      (function(par){
+        var el = $(par[0]);
+        if (el) el.addEventListener("blur", par[1]);
+      })(aoSair[i]);
+    }
+
+    var bCad = $("cad-ok");
+    if (bCad) bCad.addEventListener("click", function(){
+      var QF = window.QSE_FIREBASE;
+      if (!QF) return;
+      txt("cad-err", "");
+      var v = validarCadastro();
+      if (!v) return;
+
+      bCad.disabled = true;
+      bCad.textContent = "Criando…";
+      function solta(){ bCad.disabled = false; bCad.textContent = "Criar conta"; }
+
+      /* Já logado sem perfil: só falta o perfil. */
+      var passo = CONTA.ident
+        ? Promise.resolve({ uid: CONTA.ident.uid, email: CONTA.ident.email })
+        : QF.criarConta(v.email, v.senha).then(function(u){
+            return { uid: u.uid, email: u.email || v.email };
+          });
+
+      passo.then(function(u){
+        return CONTA.api
+          ? CONTA.api.criar(u.uid, { nick: v.nick, nome: v.nome, email: u.email })
+          : Promise.reject({ code: "sem_db" });
       }).then(function(p){
-        criar.disabled = false;
+        solta();
         CONTA.perfil = p;
         lembrarNick(p.nick);
         pintarConta(); pintarHome();
-        toast("Conta criada. Bem-vindo, " + p.nick + ".");
+        toast("Conta criada. Bem-vindo, " + p.nick + "!");
+        if (CONTA.apos){ var f = CONTA.apos; CONTA.apos = null; f(); }
       }, function(e){
-        criar.disabled = false;
-        contaErro("conta-novo-err", contaMotivo(e));
+        solta();
+        var c = e && e.code;
+        if (c === "nick_em_uso"){
+          txt("cad-nick-erro", "Esse apelido já está sendo usado.");
+          marcarCampo("cad-nick", true);
+        } else if (c && String(c).indexOf("auth/") === 0){
+          txt("cad-err", motivoAuth(e));
+        } else {
+          txt("cad-err", motivoConta(e));
+        }
       });
     });
 
-    var bAmigos = $("conta-amigos");
-    if (bAmigos) bAmigos.addEventListener("click", function(){
-      show("s-amigos"); pintarAmigos();
+    var bLogin = $("login-ok");
+    if (bLogin) bLogin.addEventListener("click", function(){
+      var QF = window.QSE_FIREBASE;
+      if (!QF) return;
+      txt("login-err", "");
+      var em = $("login-email").value, se = $("login-senha").value;
+      var e1 = erroEmail(em);
+      if (e1){ txt("login-err", e1); return; }
+      if (!se){ txt("login-err", "Digite sua senha."); return; }
+      bLogin.disabled = true; bLogin.textContent = "Entrando…";
+      QF.entrar(em, se).then(function(){
+        bLogin.disabled = false; bLogin.textContent = "Entrar";
+      }, function(e){
+        bLogin.disabled = false; bLogin.textContent = "Entrar";
+        txt("login-err", motivoAuth(e));
+      });
     });
+
+    var esqueci = $("login-esqueci");
+    if (esqueci) esqueci.addEventListener("click", function(){
+      var QF = window.QSE_FIREBASE;
+      if (!QF) return;
+      var em = $("login-email").value;
+      if (erroEmail(em)){ txt("login-err", "Escreva seu e-mail acima primeiro."); return; }
+      QF.esqueciSenha(em).then(function(){
+        toast("Mandamos um link pra você trocar a senha.");
+      }, function(e){ txt("login-err", motivoAuth(e)); });
+    });
+
+    var bAmigos = $("conta-amigos");
+    if (bAmigos) bAmigos.addEventListener("click", function(){ show("s-amigos"); pintarAmigos(); });
 
     var sair = $("conta-sair");
     if (sair) sair.addEventListener("click", function(){
       var QF = window.QSE_FIREBASE;
       if (!QF) return;
-      QF.sair().then(function(){ toast("Você saiu da conta."); }, function(){});
+      QF.sair().then(function(){
+        CONTA.modo = "login";
+        $("cad-email").disabled = false;
+        toast("Você saiu da conta.");
+      }, function(){});
     });
 
     var abaR = $("aba-rank"), abaL = $("aba-lista");
@@ -2205,29 +2460,28 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
     var add = $("amigos-add");
     if (add) add.addEventListener("click", function(){
-      if (!contaLigada()) return;
-      var nick = ($("amigos-busca").value || "").trim();
-      contaErro("amigos-err", "");
+      if (!contaCompleta()) return;
+      var nick = ($("amigos-busca").value || "").replace(/^\s+|\s+$/g, "");
+      txt("amigos-err", "");
       if (!nick) return;
       add.disabled = true;
       CONTA.api.porNick(nick).then(function(achado){
         if (!achado){
           add.disabled = false;
-          contaErro("amigos-err", "Não achei ninguém com o apelido “" + nick + "”.");
+          txt("amigos-err", "Não achei ninguém com o apelido “" + nick + "”.");
           return null;
         }
         return CONTA.api.pedir(CONTA.ident.uid, achado.uid).then(function(r){
           add.disabled = false;
           $("amigos-busca").value = "";
           toast(r === "pedido" ? "Pedido enviado."
-              : r === "aceito" ? "Vocês já são amigos."
-              : r === "ja_amigos" ? "Vocês já são amigos."
+              : (r === "aceito" || r === "ja_amigos") ? "Vocês já são amigos."
               : "Pedido já estava enviado.");
           pintarAmigos();
         });
       }, function(){ add.disabled = false; })["catch"](function(e){
         add.disabled = false;
-        contaErro("amigos-err", contaMotivo(e));
+        txt("amigos-err", motivoConta(e));
       });
     });
   }
@@ -2239,7 +2493,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     var bc = $("go-conta");
     if (bc){
       bc.hidden = !CONTA.api;
-      bc.textContent = !CONTA.ident ? "Entrar na minha conta"
+      bc.textContent = !CONTA.ident ? "Entrar ou criar conta"
                      : !CONTA.perfil ? "Terminar meu cadastro"
                      : CONTA.perfil.nick + " · amigos e ranking";
     }

@@ -3,8 +3,8 @@
 
    Ponte entre o SDK modular (ESM, moderno) e o jogo (ES5, um IIFE só).
    Carrega o SDK por import() dinâmico, monta o `db` no contrato da
-   capability via criarDbFirestore, cuida do login por link mágico e
-   entrega tudo pronto pra quem estiver esperando.
+   capability via criarDbFirestore, cuida do login por e-mail e senha
+   e entrega tudo pronto pra quem estiver esperando.
 
    Por que import() dinâmico e não uma tag de módulo: assim este arquivo
    continua sendo script clássico, carrega na ordem junto com o resto, e
@@ -20,7 +20,6 @@
 
   var VERSAO_SDK = "12.18.0";
   var BASE = "https://www.gstatic.com/firebasejs/" + VERSAO_SDK + "/";
-  var CHAVE_EMAIL = "quemsoueu:email-pendente";
 
   var ouvintes = [];
   var estado = { pronto: false, db: null, auth: null, identidade: null, erro: null };
@@ -45,40 +44,41 @@
 
   API.estado = function(){ return estado; };
 
-  /* ---- login por link mágico ----
-     O e-mail fica guardado localmente entre "pedir o link" e "abrir o
-     link", porque o Firebase precisa dele pra fechar o login e o link
-     pode ser aberto em outro navegador. Quando isso acontece, a gente
-     pergunta o e-mail de novo em vez de falhar. */
-  API.enviarLink = function(email){
-    if (!estado.auth || !sdkAuth)
-      return Promise.reject(new Error("firebase ainda não carregou"));
-    email = String(email || "").trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      return Promise.reject(new Error("e-mail inválido"));
+  /* ---- login com e-mail e senha ----
+     Cada função devolve uma promessa que rejeita com um Error que tem
+     `.code` do Firebase. Quem chama traduz o código pra frase; aqui não
+     entra texto de interface. */
 
-    var destino = raiz.location.origin + raiz.location.pathname;
-    return sdkAuth.sendSignInLinkToEmail(estado.auth, email, {
-      url: destino,
-      handleCodeInApp: true
-    }).then(function(){
-      try { raiz.localStorage.setItem(CHAVE_EMAIL, email); } catch(e){}
-      return email;
+  function semSdk(){
+    return Promise.reject(new Error("firebase ainda não carregou"));
+  }
+
+  API.criarConta = function(email, senha){
+    if (!estado.auth || !sdkAuth) return semSdk();
+    return sdkAuth.createUserWithEmailAndPassword(
+      estado.auth, String(email || "").trim().toLowerCase(), String(senha || "")
+    ).then(function(cred){
+      /* Confirmação de e-mail: mandada e esquecida. Não trava o
+         cadastro — a conta já vale. Se falhar (cota, rede), o silêncio
+         é proposital: seria cruel travar quem acabou de se cadastrar
+         por causa de um e-mail que nem é obrigatório. */
+      try {
+        if (sdkAuth.sendEmailVerification) sdkAuth.sendEmailVerification(cred.user)["catch"](noop);
+      } catch(e){}
+      return cred.user;
     });
   };
 
-  API.precisaConfirmarEmail = function(){
-    if (!estado.auth || !sdkAuth) return false;
-    if (!sdkAuth.isSignInWithEmailLink(estado.auth, raiz.location.href)) return false;
-    return !emailGuardado();
+  API.entrar = function(email, senha){
+    if (!estado.auth || !sdkAuth) return semSdk();
+    return sdkAuth.signInWithEmailAndPassword(
+      estado.auth, String(email || "").trim().toLowerCase(), String(senha || "")
+    ).then(function(cred){ return cred.user; });
   };
 
-  API.concluirLoginCom = function(email){
-    if (!estado.auth || !sdkAuth)
-      return Promise.reject(new Error("firebase ainda não carregou"));
-    return sdkAuth.signInWithEmailLink(estado.auth, String(email || "").trim().toLowerCase(),
-                                       raiz.location.href)
-      .then(function(cred){ limparLink(); return cred.user; });
+  API.esqueciSenha = function(email){
+    if (!estado.auth || !sdkAuth) return semSdk();
+    return sdkAuth.sendPasswordResetEmail(estado.auth, String(email || "").trim().toLowerCase());
   };
 
   API.sair = function(){
@@ -86,21 +86,7 @@
     return sdkAuth.signOut(estado.auth);
   };
 
-  function emailGuardado(){
-    try { return raiz.localStorage.getItem(CHAVE_EMAIL) || ""; } catch(e){ return ""; }
-  }
-
-  /* Tira o código do link da barra de endereço depois de usar. Sem isso,
-     recarregar a página tenta reusar um código já queimado e mostra erro
-     pra quem não fez nada de errado. */
-  function limparLink(){
-    try { raiz.localStorage.removeItem(CHAVE_EMAIL); } catch(e){}
-    try {
-      if (raiz.history && raiz.history.replaceState){
-        raiz.history.replaceState({}, "", raiz.location.origin + raiz.location.pathname);
-      }
-    } catch(e){}
-  }
+  function noop(){}
 
   /* ---- carga ---- */
   function carregar(){
@@ -132,16 +118,6 @@
         onSnapshot: fs.onSnapshot, runTransaction: fs.runTransaction,
         query: fs.query, where: fs.where, orderBy: fs.orderBy, limit: fs.limit
       });
-
-      /* voltando de um link mágico */
-      if (au.isSignInWithEmailLink(estado.auth, raiz.location.href)){
-        var email = emailGuardado();
-        if (email){
-          au.signInWithEmailLink(estado.auth, email, raiz.location.href)
-            .then(limparLink, function(e){ estado.erro = e && e.code; limparLink(); });
-        }
-        /* sem e-mail guardado, a UI pergunta e chama concluirLoginCom() */
-      }
 
       au.onAuthStateChanged(estado.auth, function(user){
         estado.identidade = user ? {

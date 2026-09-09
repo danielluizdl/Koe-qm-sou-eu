@@ -60,10 +60,31 @@
   }
   function nickValido(s){
     var c = chaveNick(s);
-    return c.length >= 3 && c.length <= 16 && normNick(s).length <= 20;
+    return c.length >= 2 && c.length <= 16 && normNick(s).length <= 20;
   }
+
+  /* E-mail: exige texto, arroba, dominio e um ponto com extensao de 2+
+     letras depois. Nao tenta validar se a caixa existe -- isso so o
+     servidor de e-mail sabe -- mas barra o que claramente nao e
+     endereco: sem arroba, sem dominio, terminado em ponto. */
   function emailValido(s){
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s == null ? "" : s));
+    var t = String(s == null ? "" : s).trim();
+    if (!t || t.length > 254) return false;
+    if (t.indexOf(" ") >= 0) return false;
+    return /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)*\.[A-Za-z]{2,}$/.test(t);
+  }
+
+  /* Nome completo: pelo menos duas palavras de 2+ letras. "Ana" nao
+     passa, "Ana Souza" passa. */
+  function nomeValido(s){
+    var t = normNick(s);
+    if (t.length < 4 || t.length > 60) return false;
+    var partes = t.split(" ");
+    var boas = 0, i;
+    for (i = 0; i < partes.length; i++){
+      if (/^[A-Za-zÀ-ÿ'.-]{2,}$/.test(partes[i])) boas++;
+    }
+    return boas >= 2;
   }
 
   function erro(code, msg){ var e = new Error(msg || code); e.code = code; return e; }
@@ -101,8 +122,10 @@
     A.criar = function(uid, dados){
       dados = dados || {};
       if (!uid) return Promise.reject(erro("sem_uid", "uid obrigatório"));
+      if (!nomeValido(dados.nome))
+        return Promise.reject(erro("nome_invalido", "nome e sobrenome"));
       if (!nickValido(dados.nick))
-        return Promise.reject(erro("nick_invalido", "nick precisa de 3 a 16 caracteres"));
+        return Promise.reject(erro("nick_invalido", "nick precisa de 2 a 16 caracteres"));
       if (!emailValido(dados.email))
         return Promise.reject(erro("email_invalido", "e-mail inválido"));
 
@@ -165,7 +188,7 @@
 
     A.renomear = function(uid, novoNick){
       if (!nickValido(novoNick))
-        return Promise.reject(erro("nick_invalido", "nick precisa de 3 a 16 caracteres"));
+        return Promise.reject(erro("nick_invalido", "nick precisa de 2 a 16 caracteres"));
       var nova = chaveNick(novoNick);
       return A.perfilPublico(uid).then(function(p){
         if (!p) throw erro("sem_perfil", "perfil não existe");
@@ -376,7 +399,7 @@
   var API = {
     CriarContas: CriarContas,
     normNick: normNick, chaveNick: chaveNick,
-    nickValido: nickValido, emailValido: emailValido
+    nickValido: nickValido, emailValido: emailValido, nomeValido: nomeValido
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else raiz.CONTAS = API;

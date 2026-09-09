@@ -5,7 +5,7 @@
      DB=firestore node test-contas.js
 
    node test-contas.js */
-const { CriarContas, chaveNick, nickValido, emailValido } = require("./contas.js");
+const { CriarContas, chaveNick, nickValido, emailValido, nomeValido } = require("./contas.js");
 
 const BACKEND = process.env.DB === "firestore" ? "firestore" : "capability";
 
@@ -83,8 +83,13 @@ const pega = async p => { try { return { v: await p }; } catch(e){ return { e: e
 t("chaveNick tira acento", chaveNick("Ánã") === "ana", chaveNick("Ánã"));
 t("chaveNick tira espaço e caixa", chaveNick("  João Silva ") === "joaosilva", chaveNick("  João Silva "));
 t("chaveNick tira ç e ñ", chaveNick("Açaí Niño") === "acainino", chaveNick("Açaí Niño"));
-t("nick curto demais é inválido", !nickValido("ab"));
+t("nick de 1 caractere é inválido", !nickValido("a"));
+t("nick de 2 é válido (mínimo novo)", nickValido("an"));
 t("nick de 3 é válido", nickValido("ana"));
+t("nome com uma palavra só é inválido", !nomeValido("Ana"));
+t("nome e sobrenome é válido", nomeValido("Ana Souza"));
+t("extensão de 1 letra não é e-mail", !emailValido("x@y.z"));
+t("extensão de 2 letras é e-mail", emailValido("x@y.co"));
 t("nick de 16 é válido", nickValido("a".repeat(16)));
 t("nick de 17 é inválido", !nickValido("a".repeat(17)));
 t("nick só de símbolos é inválido", !nickValido("!!!!"));
@@ -102,15 +107,15 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
   t("agregado começa zerado", p.partidas === 0 && p.saldo === 0);
   t("conta nasce não anônima", p.anonimo === false);
 
-  const dup = await pega(A.criar("u2", { nick: "ANA", nome: "", email: "x@y.z" }));
+  const dup = await pega(A.criar("u2", { nick: "ANA", nome: "Ana Teste", email: "x@y.co" }));
   t("nick duplicado (outra caixa) é recusado", dup.e === "nick_em_uso", String(dup.e));
 
-  const mesmo = await pega(A.criar("u1", { nick: "Outro", nome: "", email: "x@y.z" }));
+  const mesmo = await pega(A.criar("u1", { nick: "Outro", nome: "Outro Teste", email: "x@y.co" }));
   t("uid repetido é recusado", mesmo.e === "ja_existe", String(mesmo.e));
 
-  const ruim = await pega(A.criar("u3", { nick: "ok", nome: "", email: "x@y.z" }));
+  const ruim = await pega(A.criar("u3", { nick: "o", nome: "Ok Teste", email: "x@y.co" }));
   t("nick inválido é recusado", ruim.e === "nick_invalido");
-  const mail = await pega(A.criar("u4", { nick: "beto", nome: "", email: "naoemail" }));
+  const mail = await pega(A.criar("u4", { nick: "beto", nome: "Beto Teste", email: "naoemail" }));
   t("email inválido é recusado", mail.e === "email_invalido");
 
   const achado = await A.porNick("  aNa ");
@@ -151,8 +156,8 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
 /* ================= 3. Renomear ================= */
 {
   const A = CriarContas(makeDb());
-  await A.criar("u1", { nick: "ana", nome: "", email: "a@b.co" });
-  await A.criar("u2", { nick: "bia", nome: "", email: "b@b.co" });
+  await A.criar("u1", { nick: "ana", nome: "Ana Teste", email: "a@b.co" });
+  await A.criar("u2", { nick: "bia", nome: "Bia Teste", email: "b@b.co" });
 
   const p = await A.renomear("u1", "Aninha");
   t("renomear troca o nick", p.nick === "Aninha" && p.nickChave === "aninha");
@@ -169,9 +174,9 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
 /* ================= 4. Amizade ================= */
 {
   const A = CriarContas(makeDb());
-  await A.criar("ana", { nick: "ana", nome: "", email: "a@b.co" });
-  await A.criar("bia", { nick: "bia", nome: "", email: "b@b.co" });
-  await A.criar("caio", { nick: "caio", nome: "", email: "c@b.co" });
+  await A.criar("ana", { nick: "ana", nome: "Ana Teste", email: "a@b.co" });
+  await A.criar("bia", { nick: "bia", nome: "Bia Teste", email: "b@b.co" });
+  await A.criar("caio", { nick: "caio", nome: "Caio Teste", email: "c@b.co" });
 
   t("sem amigos no começo", (await A.amigos("ana")).length === 0);
 
@@ -208,7 +213,7 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
 /* ================= 5. Registrar partida e agregado ================= */
 {
   const A = CriarContas(makeDb());
-  await A.criar("ana", { nick: "ana", nome: "", email: "a@b.co" });
+  await A.criar("ana", { nick: "ana", nome: "Ana Teste", email: "a@b.co" });
 
   const ordem = [{ id:"ana", chave:1 }, { id:"bia", chave:2 }, { id:"caio", chave:3 }];
   t("registrar devolve 'registrada'",
@@ -249,7 +254,7 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
 {
   const A = CriarContas(makeDb());
   for (const [uid, nick] of [["ana","ana"],["bia","bia"],["caio","caio"],["dudu","dudu"]])
-    await A.criar(uid, { nick, nome: "", email: uid + "@b.co" });
+    await A.criar(uid, { nick, nome: nick.charAt(0).toUpperCase()+nick.slice(1)+" Teste", email: uid + "@b.co" });
 
   await A.pedir("ana", "bia"); await A.aceitar("bia", "ana");
   await A.pedir("ana", "caio"); await A.aceitar("caio", "ana");
@@ -286,7 +291,7 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
   const db1 = makeDb();
   const A = CriarContas(db1);
   await A.criar("ana", { nick: "ana", nome: "Ana Souza", email: "a@b.co" });
-  await A.criar("bia", { nick: "bia", nome: "", email: "b@b.co" });
+  await A.criar("bia", { nick: "bia", nome: "Bia Teste", email: "b@b.co" });
   await A.pedir("ana", "bia"); await A.aceitar("bia", "ana");
   await A.registrarMinhaPartida("ana", { pid:"p1",
     ordem: [{id:"ana",chave:1},{id:"bia",chave:2}] });
