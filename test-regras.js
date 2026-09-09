@@ -188,6 +188,47 @@ async function t(nome, fn){
   await t("quem não é host NÃO grava histórico",
     () => assertFails(updateDoc(doc(bia, "salas/FESTA/hist/registro"), { "items.p2": { n:2 } })));
 
+  /* ============ ids: o handle que não muda ============ */
+  await semear(async db => {
+    await setDoc(doc(db, "ids/AAA111"), { id:"AAA111", uid:"ana", em:1 });
+  });
+  await t("logado lê o índice de ID (é como se acha alguém)",
+    () => assertSucceeds(getDoc(doc(bia, "ids/AAA111"))));
+  await t("deslogado NÃO lê o índice de ID",
+    () => assertFails(getDoc(doc(fora, "ids/AAA111"))));
+  await t("reserva ID apontando pro próprio uid",
+    () => assertSucceeds(setDoc(doc(zeca, "ids/ZZZ999"), { id:"ZZZ999", uid:"zeca", em:1 })));
+  await t("NÃO reserva ID apontando pra outra pessoa",
+    () => assertFails(setDoc(doc(zeca, "ids/BBB222"), { id:"BBB222", uid:"ana", em:1 })));
+  await t("o campo id tem que bater com o documento",
+    () => assertFails(setDoc(doc(zeca, "ids/CCC333"), { id:"OUTRO", uid:"zeca", em:1 })));
+  await t("NÃO rouba o ID de outro",
+    () => assertFails(setDoc(doc(bia, "ids/AAA111"), { id:"AAA111", uid:"bia", em:1 })));
+  await t("dono libera o próprio ID",
+    () => assertSucceeds(deleteDoc(doc(ana, "ids/AAA111"))));
+
+  /* ============ amizade automática ============
+     Cada aparelho escreve os dois lados da SUA relação. O que a regra
+     precisa garantir é que ninguém escreva a relação de terceiros. */
+  await t("escrevo a aresta na minha lista",
+    () => assertSucceeds(setDoc(doc(ana, "usuarios/ana/amigos/bia"),
+      { uid:"bia", nick:"Bia", status:"aceito", direcao:"aceito", em:1 })));
+  await t("escrevo a aresta que aponta pra MIM na lista do outro",
+    () => assertSucceeds(setDoc(doc(ana, "usuarios/bia/amigos/ana"),
+      { uid:"ana", nick:"Ana", status:"aceito", direcao:"aceito", em:1 })));
+  await t("NÃO escrevo aresta entre DUAS outras pessoas",
+    () => assertFails(setDoc(doc(ana, "usuarios/bia/amigos/zeca"),
+      { uid:"zeca", nick:"Zeca", status:"aceito", direcao:"aceito", em:1 })));
+  await t("NÃO forjo o uid da aresta que ponho na lista alheia",
+    () => assertFails(setDoc(doc(ana, "usuarios/bia/amigos/ana"),
+      { uid:"zeca", nick:"Zeca", status:"aceito", direcao:"aceito", em:1 })));
+
+  /* ============ o campo id no perfil ============ */
+  await t("dono grava o próprio id no perfil",
+    () => assertSucceeds(updateDoc(doc(ana, "perfis/ana"), { id:"NOVO12", atualizadoEm: 9 })));
+  await t("outro NÃO grava id no perfil alheio",
+    () => assertFails(updateDoc(doc(bia, "perfis/ana"), { id:"HACK99" })));
+
   /* ============ o resto do banco não existe ============ */
   await t("caminho não previsto é negado (leitura)",
     () => assertFails(getDoc(doc(ana, "qualquerOutra/coisa"))));

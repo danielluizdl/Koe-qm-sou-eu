@@ -5,7 +5,8 @@
      DB=firestore node test-contas.js
 
    node test-contas.js */
-const { CriarContas, chaveNick, nickValido, emailValido, nomeValido } = require("./contas.js");
+const { CriarContas, chaveNick, nickValido, emailValido, nomeValido,
+        normId, idValido, A32 } = require("./contas.js");
 
 const BACKEND = process.env.DB === "firestore" ? "firestore" : "capability";
 
@@ -317,6 +318,99 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
   t("não dá pra adicionar conta removida",
     (await pega(A.pedir("bia", "ana"))).e === "conta_removida" ||
     (await A.amigos("bia")).length === 1);
+}
+
+/* ================= 8. ID de jogador ================= */
+t("normId aceita com #", normId("#K7M2XA") === "K7M2XA");
+t("normId aceita minúscula", normId("k7m2xa") === "K7M2XA");
+t("normId recusa tamanho errado", normId("K7M2X") === "");
+t("normId recusa 0 e 1 (confundem com O e I)", normId("K0M1XA") === "");
+t("o alfabeto não tem 0, 1, I nem O",
+  A32.indexOf("0") < 0 && A32.indexOf("1") < 0 && A32.indexOf("I") < 0 && A32.indexOf("O") < 0, A32);
+
+{
+  const A = CriarContas(makeDb());
+  const p = await A.criar("u1", { nick: "ana", nome: "Ana Souza", email: "a@b.co" });
+  t("conta nova nasce com ID", !!p.id, JSON.stringify(p.id));
+  t("ID tem 6 caracteres", p.id && p.id.length === 6, String(p.id));
+  t("ID só usa o alfabeto seguro",
+    p.id && p.id.split("").every(c => A32.indexOf(c) >= 0), String(p.id));
+
+  const porId = await A.porId(p.id);
+  t("acha por ID", porId && porId.uid === "u1", JSON.stringify(porId));
+  t("acha por ID com #", (await A.porId("#" + p.id)).uid === "u1");
+  t("acha por ID em minúscula", (await A.porId(p.id.toLowerCase())).uid === "u1");
+  t("ID inexistente devolve null", (await A.porId("ZZZZZZ")) === null);
+
+  t("buscar acha por apelido", (await A.buscar("ana")).uid === "u1");
+  t("buscar acha por ID", (await A.buscar(p.id)).uid === "u1");
+  t("buscar com texto solto devolve null", (await A.buscar("naoexiste")) === null);
+
+  const B = await A.criar("u2", { nick: "bia", nome: "Bia Lima", email: "b@b.co" });
+  t("dois jogadores, dois IDs diferentes", B.id !== p.id, p.id + " vs " + B.id);
+}
+
+/* conta antiga (sem ID) ganha um sem pedir nada */
+{
+  const db2 = makeDb();
+  const A = CriarContas(db2);
+  await A.criar("velho", { nick: "velho", nome: "Zé Antigo", email: "v@b.co" });
+  await db2.doc("perfis/velho").update({ id: "" });
+  t("simulou conta sem ID", !(await A.perfilPublico("velho")).id);
+
+  const p = await A.garantirId("velho");
+  t("garantirId gera pra conta antiga", !!p.id, JSON.stringify(p.id));
+  t("e o ID fica gravado", !!(await A.perfilPublico("velho")).id);
+  const mesmo = await A.garantirId("velho");
+  t("chamar de novo não troca o ID", mesmo.id === p.id);
+}
+
+/* anonimizar libera o ID */
+{
+  const A = CriarContas(makeDb());
+  const p = await A.criar("ana", { nick: "ana", nome: "Ana Souza", email: "a@b.co" });
+  await A.anonimizar("ana");
+  t("ID é liberado ao encerrar a conta", (await A.porId(p.id)) === null);
+}
+
+/* ================= 9. Amizade automática ================= */
+{
+  const A = CriarContas(makeDb());
+  for (const [uid, nick] of [["ana","ana"],["bia","bia"],["caio","caio"]])
+    await A.criar(uid, { nick, nome: nick.charAt(0).toUpperCase() + nick.slice(1) + " Teste",
+                         email: uid + "@b.co" });
+
+  t("começam sem amigos", (await A.amigos("ana")).length === 0);
+
+  const novos = await A.amizadeAutomatica("ana", ["bia", "caio"]);
+  t("adiciona os dois", novos.length === 2, JSON.stringify(novos));
+  t("devolve os apelidos pra tela avisar",
+    novos.map(n => n.nick).sort().join(",") === "bia,caio", JSON.stringify(novos));
+  t("ana tem 2 amigos", (await A.amigos("ana")).length === 2);
+  t("e do outro lado também", (await A.amigos("bia")).some(x => x.uid === "ana"));
+  t("já entram como aceitos, sem pedido",
+    (await A.pedidosRecebidos("bia")).length === 0);
+
+  const denovo = await A.amizadeAutomatica("ana", ["bia", "caio"]);
+  t("jogar de novo não duplica", denovo.length === 0, JSON.stringify(denovo));
+  t("continua com 2 amigos", (await A.amigos("ana")).length === 2);
+
+  t("ignora quem não tem conta",
+    (await A.amizadeAutomatica("ana", ["fantasma"])).length === 0);
+  t("ignora você mesmo", (await A.amizadeAutomatica("ana", ["ana"])).length === 0);
+  t("lista vazia é no-op", (await A.amizadeAutomatica("ana", [])).length === 0);
+}
+
+/* pedido pendente vira amizade */
+{
+  const A2 = CriarContas(makeDb());
+  await A2.criar("x", { nick: "xis", nome: "Xis Teste", email: "x@b.co" });
+  await A2.criar("y", { nick: "ypsilon", nome: "Ypsilon Teste", email: "y@b.co" });
+  await A2.pedir("x", "y");
+  t("havia pedido pendente", (await A2.pedidosRecebidos("y")).length === 1);
+  await A2.amizadeAutomatica("x", ["y"]);
+  t("pedido pendente vira amizade", (await A2.amigos("x")).length === 1);
+  t("e some dos pendentes", (await A2.pedidosRecebidos("y")).length === 0);
 }
 
 console.log("\n[" + BACKEND + "] " + ok + " passaram, " + falhas.length + " falharam");

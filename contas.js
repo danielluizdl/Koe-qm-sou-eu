@@ -87,6 +87,29 @@
     return boas >= 2;
   }
 
+  /* Mesmo alfabeto dos códigos do jogo: sem 0, 1, I e O, porque quem lê
+     um ID em voz alta no grupo confunde zero com O e um com I. */
+  var A32 = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  var TAM_ID = 6;
+
+  function sortearId(){
+    var s = "", i;
+    for (i = 0; i < TAM_ID; i++) s += A32.charAt(Math.floor(Math.random() * A32.length));
+    return s;
+  }
+
+  /* Aceita com ou sem "#", em qualquer caixa. Devolve "" se não for um
+     ID possível — assim quem chama distingue "não é ID" de "é ID que não
+     existe". */
+  function normId(s){
+    var t = String(s == null ? "" : s).replace(/^\s+|\s+$/g, "").replace(/^#/, "").toUpperCase();
+    if (t.length !== TAM_ID) return "";
+    var i;
+    for (i = 0; i < t.length; i++) if (A32.indexOf(t.charAt(i)) < 0) return "";
+    return t;
+  }
+  function idValido(s){ return normId(s) !== ""; }
+
   function erro(code, msg){ var e = new Error(msg || code); e.code = code; return e; }
 
   function CriarContas(db){
@@ -98,6 +121,7 @@
     function refAmigo(uid, outro){ return refAmigos(uid).doc(outro); }
     function refPartidas(uid){ return refUsuario(uid).collection("partidas"); }
     function refNick(chave){ return db.doc("nicks/" + chave); }
+    function refId(id){ return db.doc("ids/" + id); }
 
     /* ---------------- nick: reserva com lease ----------------
        Mesmo padrão que criar sala usa: acquire, confere, grava. O
@@ -117,6 +141,27 @@
       });
     }
 
+    /* Reserva um ID livre. Mesmo padrão do apelido: acquire, confere,
+       grava. Sorteia de novo em colisão — com 32^6 combinações elas são
+       raras, mas raras não é nunca. */
+    function reservarId(uid, tentativas){
+      tentativas = tentativas || 0;
+      var id = sortearId();
+      return refId(id).acquire({ holder: uid, ttlMs: 8000 }).then(function(res){
+        if (!res || !res.acquired){
+          if (tentativas < 8) return reservarId(uid, tentativas + 1);
+          throw erro("id_indisponivel", "não consegui gerar um ID");
+        }
+        return refId(id).get().then(function(s){
+          if (s.exists && s.data().uid !== uid){
+            if (tentativas < 8) return reservarId(uid, tentativas + 1);
+            throw erro("id_indisponivel", "não consegui gerar um ID");
+          }
+          return refId(id).set({ id: id, uid: uid, em: agora() }).then(function(){ return id; });
+        });
+      });
+    }
+
     /* ---------------- criar / ler perfil ---------------- */
 
     A.criar = function(uid, dados){
@@ -129,13 +174,17 @@
       if (!emailValido(dados.email))
         return Promise.reject(erro("email_invalido", "e-mail inválido"));
 
-      var chave = chaveNick(dados.nick), t = agora();
+      var chave = chaveNick(dados.nick), t = agora(), meuId = "";
       return refPerfil(uid).get().then(function(s){
         if (s.exists) throw erro("ja_existe", "esse uid já tem perfil");
         return reservarNick(chave, uid, dados.nick);
       }).then(function(){
+        return reservarId(uid);
+      }).then(function(id){
+        meuId = id;
         return refPerfil(uid).set({
           uid: uid,
+          id: meuId,
           nick: normNick(dados.nick),
           nickChave: chave,
           anonimo: false,
@@ -153,10 +202,26 @@
       }).then(function(){ return A.perfil(uid); });
     };
 
-    /* Só o agregado e o nick — é o que qualquer pessoa logada pode ver. */
+    /* Só o agregado, o nick e o ID — é o que qualquer pessoa logada pode
+       ver, e é o que permite alguém te achar. */
     A.perfilPublico = function(uid){
       return refPerfil(uid).get().then(function(s){
         return s.exists ? s.data() : null;
+      });
+    };
+
+    /* Contas criadas antes do ID existir ganham um na primeira leitura do
+       próprio perfil, sem pedir nada a ninguém. Só o dono consegue (a
+       regra impede escrever no perfil alheio), então isso roda quando a
+       pessoa abre a própria conta. */
+    A.garantirId = function(uid){
+      return A.perfilPublico(uid).then(function(p){
+        if (!p) return null;
+        if (p.id) return p;
+        return reservarId(uid).then(function(id){
+          return refPerfil(uid).update({ id: id, atualizadoEm: agora() })
+            .then(function(){ p.id = id; return p; });
+        }, function(){ return p; });   // sem ID é melhor que sem perfil
       });
     };
 
@@ -183,6 +248,29 @@
       if (!chave) return Promise.resolve(null);
       return refNick(chave).get().then(function(s){
         return s.exists ? s.data() : null;
+      });
+    };
+
+    A.porId = function(id){
+      var t = normId(id);
+      if (!t) return Promise.resolve(null);
+      return refId(t).get().then(function(s){
+        if (!s.exists) return null;
+        var d = s.data();
+        return A.perfilPublico(d.uid).then(function(p){
+          return p ? { uid: p.uid, nick: p.nick, id: p.id } : null;
+        });
+      });
+    };
+
+    /* O campo de busca é um só: a pessoa cola o que tiver. Tenta apelido
+       primeiro (é o que mais se digita); se não achar e o texto tiver
+       cara de ID, tenta como ID. */
+    A.buscar = function(texto){
+      return A.porNick(texto).then(function(achado){
+        if (achado) return achado;
+        if (!idValido(texto)) return null;
+        return A.porId(texto);
       });
     };
 
@@ -219,8 +307,10 @@
         if (!p) return null;
         var t = agora();
         return refNick(p.nickChave)["delete"]().then(noop, noop).then(function(){
+          return p.id ? refId(p.id)["delete"]().then(noop, noop) : null;
+        }).then(function(){
           return refPerfil(uid).update({
-            nick: "jogador removido", nickChave: "",
+            nick: "jogador removido", nickChave: "", id: "",
             anonimo: true, atualizadoEm: t
           });
         }).then(function(){
@@ -306,6 +396,52 @@
     };
     A.pedidosEnviados = function(uid){
       return listar(uid, function(d){ return d.status === "pendente" && d.direcao === "enviado"; });
+    };
+
+    /* ---------------- amizade automática ----------------
+       Jogou junto, virou amigo. Sem pedido, sem confirmação.
+
+       Cada aparelho escreve os DOIS lados da SUA relação: a aresta na
+       própria lista e a aresta que aponta pra si na lista do outro. A
+       regra de segurança permite exatamente isso e nada mais — ninguém
+       consegue casar duas pessoas quaisquer, porque a aresta que se pode
+       criar na lista alheia é só a que tem o seu próprio uid.
+
+       Idempotente: já amigos, não faz nada; pedido pendente vira aceito.
+       Quem não tem conta (convidado da mesa) é ignorado em silêncio —
+       não é erro, é gente sem uid. */
+    A.amizadeAutomatica = function(uid, outros){
+      outros = outros || [];
+      var alvos = [], i, vistos = {};
+      for (i = 0; i < outros.length; i++){
+        var o = outros[i];
+        if (!o || o === uid || vistos[o]) continue;
+        vistos[o] = 1; alvos.push(o);
+      }
+      if (!alvos.length) return Promise.resolve([]);
+
+      return A.perfilPublico(uid).then(function(meu){
+        if (!meu) return [];
+        var novos = [];
+        function passo(k){
+          if (k >= alvos.length) return Promise.resolve(novos);
+          var outro = alvos[k];
+          return A.perfilPublico(outro).then(function(p){
+            /* sem perfil = convidado sem conta; segue o baile */
+            if (!p || p.anonimo) return null;
+            return refAmigo(uid, outro).get().then(function(s){
+              var jaEra = s.exists && s.data().status === "aceito";
+              return aresta(uid, outro, p, "aceito", "aceito")
+                .then(function(){ return aresta(outro, uid, meu, "aceito", "aceito"); })
+                .then(function(){
+                  if (!jaEra) novos.push({ uid: outro, nick: p.nick });
+                });
+            });
+          }, function(){ return null; })
+           .then(function(){ return passo(k + 1); }, function(){ return passo(k + 1); });
+        }
+        return passo(0);
+      });
     };
 
     /* ---------------- partidas e agregado ----------------
@@ -399,7 +535,8 @@
   var API = {
     CriarContas: CriarContas,
     normNick: normNick, chaveNick: chaveNick,
-    nickValido: nickValido, emailValido: emailValido, nomeValido: nomeValido
+    nickValido: nickValido, emailValido: emailValido, nomeValido: nomeValido,
+    normId: normId, idValido: idValido, A32: A32
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else raiz.CONTAS = API;

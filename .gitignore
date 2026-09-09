@@ -5,6 +5,7 @@
 Thumbs.db
 build/
 dist/
+graphify-out/
 home-deslogada.png
 node_modules/
 public/
