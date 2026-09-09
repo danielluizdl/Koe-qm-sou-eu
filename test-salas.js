@@ -4,6 +4,13 @@
    simulado — o mesmo contrato do db.d.ts (doc/collection, get/set/update/
    delete, onSnapshot em tempo real, acquire, merge recursivo no update,
    last-writer-wins).  Roda o fluxo inteiro com 2,3,4,5,6,7 e 8 jogadores.
+
+   Dois backends, o mesmo suite:
+     node test-salas.js              -> db da capability (runtime de Artifacts)
+     DB=firestore node test-salas.js -> Firestore de verdade, via adaptador
+
+   O segundo modo é o que garante que a virada pro Firebase não muda
+   comportamento nenhum do jogo.
    node test-salas.js */
 const fs = require("fs");
 const vm = require("vm");
@@ -63,8 +70,16 @@ function makeDocument() {
   };
 }
 
-/* ---------------- banco de dados simulado (contrato db.d.ts) ---------------- */
+/* ---------------- escolha do backend ---------------- */
+const BACKEND = process.env.DB === "firestore" ? "firestore" : "capability";
 function makeDb() {
+  return BACKEND === "firestore"
+    ? require("./firestore-fake.js").makeFirestoreDb()
+    : makeDbCapability();
+}
+
+/* ---------------- banco de dados simulado (contrato db.d.ts) ---------------- */
+function makeDbCapability() {
   const store = new Map();     // fullpath -> objeto
   const leases = new Map();    // fullpath -> {holder, expiresAt}
   const listeners = [];
