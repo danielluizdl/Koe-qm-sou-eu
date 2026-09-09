@@ -6,11 +6,13 @@
   "scripts": {
     "build": "node build.js",
     "test": "node test-tudo.js",
-    "dev": "node build.js && npx firebase emulators:start",
-    "deploy": "node build.js && npx firebase deploy",
-    "deploy:regras": "npx firebase deploy --only firestore:rules",
-    "deploy:site": "node build.js && npx firebase deploy --only hosting",
-    "test:regras": "firebase emulators:exec --only firestore --project demo-quem-sou-eu \"node test-regras.js\""
+    "dev": "node build.js && npx firebase emulators:start --project quem-sou-eu-e3e32",
+    "deploy": "node build.js && npx firebase deploy --project quem-sou-eu-e3e32",
+    "deploy:regras": "npx firebase deploy --only firestore:rules --project quem-sou-eu-e3e32",
+    "deploy:site": "node build.js && npx firebase deploy --only hosting --project quem-sou-eu-e3e32",
+    "test:regras": "firebase emulators:exec --only firestore --project demo-quem-sou-eu \"node test-regras.js\"",
+    "sites": "npx firebase hosting:sites:list --project quem-sou-eu-e3e32",
+    "entrar": "npx firebase login"
   },
   "dependencies": {
     "firebase": "^12.18.0"
