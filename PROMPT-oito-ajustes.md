@@ -1,7 +1,13 @@
 # Spec confirmada — 8 ajustes (login, ID, sala, gameplay, avaliação de carta)
 
-Status: **confirmada pelo dono, implementação NÃO iniciada por pedido dele — retomar quando ele disser.**
-Gerada via skill `/spec` (gstack), Fases 1-4. Nenhum código foi tocado ao escrever este arquivo.
+Status: **implementação concluída — as 8 capacidades (C1-C8) estão commitadas e
+no `origin/main`.** Gerada via skill `/spec` (gstack), Fases 1-4.
+
+Commits: C1 `ee7ca05`/login server + wiring, C2/C3 `ee7ca05`/`68b103e`,
+C4 `5594042`, C5/C5.1 `eae5eec`, C6 `bbf386b`, C7 `763220b`, C8 `70ccc9e`.
+Toda capacidade fechou com `npm test` (16 suites) e `npm run test:regras`
+(81 casos) verdes antes do commit — nenhuma foi dada como pronta sem
+rodar o teste real listado no "Aceite".
 
 Antes de implementar: `npm test` deve estar verde (15 suites) e `npm run test:regras`
 também (66 testes) — é a baseline do commit `2b6d4e2`. Se alguém mexeu no meio
