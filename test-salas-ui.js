@@ -155,6 +155,7 @@ const compiled = new vm.Script(
   scriptSrc.slice(0, scriptSrc.lastIndexOf("})();")) +
   "globalThis.__t={CriarSalaCliente:CriarSalaCliente};" +
   "globalThis.__ui={get SC(){return SC;},get MESA(){return MESA;},get modoAtivo(){return modoAtivo;}," +
+  "get avaliarLinhas(){return avaliarLinhas;}," +
   "telaVisivel:telaVisivel,renderSala:renderSala};})();",
   { filename: "app" });
 
@@ -311,10 +312,32 @@ async function main() {
   click("hist-voltar");
   ok(tela() === "s-fim", "voltar do histórico volta pro fim");
 
-  // 7. jogar de novo
+  // C8: avaliação de dificuldade é obrigatória antes de sair do fim —
+  // "jogar de novo" é uma das duas saídas que o dono confirmou que trava.
   click("fim-denovo");
   await settle();
-  ok(tela() === "s-lobby", "jogar de novo volta pro lobby");
+  ok(tela() === "s-avaliar", "sem avaliar ainda, jogar de novo pára na tela de avaliação, foi pra " + tela());
+  const linhas = A.ui.avaliarLinhas;
+  ok(linhas.length === 3, "uma linha por carta em jogo (host, Bia, Cau), veio " + linhas.length);
+  ok(g("avaliar-ok").disabled === true, "botão trava até avaliar todas");
+  linhas[0].input.value = "0"; linhas[0].input._fire("input");
+  ok(g("avaliar-ok").disabled === true, "ainda faltam duas");
+  linhas[1].input.value = "3"; linhas[1].input._fire("input");
+  linhas[2].input.value = "5"; linhas[2].input._fire("input");
+  ok(g("avaliar-ok").disabled === false, "todas tocadas, libera o botão");
+
+  click("avaliar-ok");
+  await settle();
+  ok(tela() === "s-lobby", "avaliação feita: agora sim vai pro lobby, foi pra " + tela());
+  const dump = DB._dump();
+  const slugsCarta = Object.keys(dump).filter(k => /^cartas\/[^/]+$/.test(k));
+  const votos = Object.keys(dump).filter(k => /^cartas\/[^/]+\/votos\/[^/]+$/.test(k));
+  ok(slugsCarta.length === 3, "um agregado por carta avaliada (3), veio " + slugsCarta.length);
+  ok(votos.length === 3, "um voto por carta avaliada (3), veio " + votos.length);
+  ok(slugsCarta.every(k => dump[k].contagem === 1 && dump[k].soma === dump[k].mediaCache),
+     "cada agregado nasceu com contagem 1 e média = nota única, veio: " + JSON.stringify(slugsCarta.map(k => dump[k])));
+
+  // 7. jogar de novo
   ok(A.ui.SC.vm().minhaCarta == null, "carta zerada");
 
   // 8. apagar sala (2 toques)
@@ -322,7 +345,11 @@ async function main() {
   click("lobby-apagar");
   await settle();
   ok(tela() === "s-home", "apagar sala volta pra home, foi pra " + tela());
-  ok(DB._count() === 0, "apagar limpou o db (" + DB._count() + " docs)");
+  /* cartas/* (item 8) não é escopo da sala — a dificuldade acumula em
+     TODAS as partidas já jogadas, então sobrevive de propósito ao
+     apagar; só o que era da sala (sala + jogadores + hist) some. */
+  ok(DB._count() === slugsCarta.length + votos.length,
+     "apagar limpa a sala e deixa só o agregado de dificuldade, veio " + DB._count() + " docs");
 
   // 9. sem db (link público): "modo mesa" é o padrão, clássico continua acessível
   intervals = [];

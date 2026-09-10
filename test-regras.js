@@ -235,6 +235,55 @@ async function t(nome, fn){
   await t("outro NÃO grava id no perfil alheio",
     () => assertFails(updateDoc(doc(bia, "perfis/ana"), { id:"HACK99" })));
 
+  /* ============ cartas/{slug} — avaliação de dificuldade (item 8) ============
+     Cliente escreve direto, sem Cloud Function: a trava aqui não é
+     "impedir fraude" (não tem valor de trapaça, é só uma nota de
+     dificuldade), é impedir que o agregado saia negativo ou que
+     alguém vote em nome de outra pessoa. */
+  await t("cria o agregado da carta com uma nota válida (0-5)",
+    () => assertSucceeds(setDoc(doc(ana, "cartas/goku"),
+      { nome: "Goku", soma: 3, contagem: 1, mediaCache: 3, atualizadoEm: 1 })));
+  await t("NÃO cria agregado com soma negativa",
+    () => assertFails(setDoc(doc(bia, "cartas/naruto"),
+      { nome: "Naruto", soma: -1, contagem: 1, mediaCache: -1, atualizadoEm: 1 })));
+  await t("NÃO cria agregado com contagem diferente de 1",
+    () => assertFails(setDoc(doc(bia, "cartas/luffy"),
+      { nome: "Luffy", soma: 2, contagem: 5, mediaCache: 0.4, atualizadoEm: 1 })));
+  await t("soma um voto novo (contagem +1, soma sobe até +5)",
+    () => assertSucceeds(updateDoc(doc(bia, "cartas/goku"),
+      { soma: 8, contagem: 2, mediaCache: 4, atualizadoEm: 2 })));
+  await t("NÃO deixa a soma descer (voto não pode subtrair)",
+    () => assertFails(updateDoc(doc(bia, "cartas/goku"),
+      { soma: 1, contagem: 3, mediaCache: 0.33, atualizadoEm: 3 })));
+  await t("NÃO deixa a contagem pular (só +1 por escrita)",
+    () => assertFails(updateDoc(doc(bia, "cartas/goku"),
+      { soma: 9, contagem: 10, mediaCache: 0.9, atualizadoEm: 3 })));
+  await t("NÃO deixa uma escrita somar mais que 5 (nota máxima é 5)",
+    () => assertFails(updateDoc(doc(bia, "cartas/goku"),
+      { soma: 20, contagem: 3, mediaCache: 6.6, atualizadoEm: 3 })));
+
+  await t("cria o próprio voto (uid_pid bate com o uid de quem escreve)",
+    () => assertSucceeds(setDoc(doc(ana, "cartas/goku/votos/ana_p1"),
+      { uid: "ana", pid: "p1", nota: 3, em: 1 })));
+  await t("NÃO vota duas vezes na mesma carta na mesma partida (mesmo doc-id)",
+    () => assertFails(setDoc(doc(ana, "cartas/goku/votos/ana_p1"),
+      { uid: "ana", pid: "p1", nota: 5, em: 2 })));
+  await t("NÃO escreve voto em nome de outro uid (doc de bia, campo de zeca)",
+    () => assertFails(setDoc(doc(bia, "cartas/goku/votos/bia_p1"),
+      { uid: "zeca", pid: "p1", nota: 3, em: 1 })));
+  await t("NÃO escreve voto cujo doc-id não bate com uid_pid do próprio",
+    () => assertFails(setDoc(doc(bia, "cartas/goku/votos/bia_p2"),
+      { uid: "bia", pid: "p1", nota: 3, em: 1 })));
+  await t("NÃO aceita nota fora de 0-5",
+    () => assertFails(setDoc(doc(bia, "cartas/goku/votos/bia_p1"),
+      { uid: "bia", pid: "p1", nota: 9, em: 1 })));
+  await t("nunca dá pra reescrever o próprio voto (update sempre falso)",
+    () => assertFails(updateDoc(doc(ana, "cartas/goku/votos/ana_p1"), { nota: 0 })));
+  await t("nunca dá pra apagar um voto",
+    () => assertFails(deleteDoc(doc(ana, "cartas/goku/votos/ana_p1"))));
+  await t("ninguém lê voto alheio nem o próprio (não precisa; write-then-ignore no cliente)",
+    () => assertFails(getDoc(doc(ana, "cartas/goku/votos/ana_p1"))));
+
   /* ============ o resto do banco não existe ============ */
   await t("caminho não previsto é negado (leitura)",
     () => assertFails(getDoc(doc(ana, "qualquerOutra/coisa"))));

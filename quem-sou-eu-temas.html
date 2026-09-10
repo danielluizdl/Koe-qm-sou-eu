@@ -752,6 +752,20 @@
     </div>
   </section>
 
+  <section class="screen" id="s-avaliar">
+    <div class="topbar"><span class="tag">Antes de sair</span></div>
+    <div class="stack" style="gap:6px">
+      <p class="eyebrow">Avalie a dificuldade</p>
+      <h2>Quão difícil foi cada carta?</h2>
+      <p class="note">0 = fácil demais, 5 = difícil demais. Vale pra todas, inclusive a sua — ajuda a
+      recalibrar o baralho pra próxima vez.</p>
+    </div>
+    <div class="stack" id="avaliar-lista" style="gap:18px"></div>
+    <div class="foot">
+      <button class="btn" id="avaliar-ok" disabled>Avalie todas pra continuar</button>
+    </div>
+  </section>
+
   <section class="screen" id="s-hist">
     <div class="topbar"><button class="back" id="hist-voltar">← Voltar</button></div>
     <div class="stack" style="gap:6px"><h2>Histórico do grupo</h2></div>
@@ -1715,6 +1729,126 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   }
 
   /* ============================================================
+     Avaliação de dificuldade por carta (item 8).
+     cartas/{slug}                    agregado: soma, contagem, mediaCache
+     cartas/{slug}/votos/{uid}_{pid}  um voto por pessoa por partida
+
+     Cliente escreve direto (sem Cloud Function): errar a mão aqui não
+     rende saldo nem vitória, só atrapalha uma média — risco aceito
+     deliberadamente, ao contrário do rank.
+     ============================================================ */
+  function slugCarta(nome){
+    var s = normSenha(nome).replace(/\s+/g, "-");
+    return s || "carta";
+  }
+  function refCarta(slug){ return activeDb.doc("cartas/" + slug); }
+  function refVotoCarta(slug, uid, pid){ return refCarta(slug).collection("votos").doc(uid + "_" + pid); }
+
+  var TENTATIVAS_CARTA = 20;
+  function tentarSomarCarta(slug, nome, nota, uid, tentativas){
+    tentativas = tentativas || 0;
+    if (tentativas >= TENTATIVAS_CARTA) return Promise.reject(new Error("carta_ocupada"));
+    return refCarta(slug).acquire({ holder: uid, ttlMs: 2000 }).then(function(res){
+      if (!res || !res.acquired) return tentarSomarCarta(slug, nome, nota, uid, tentativas + 1);
+      return refCarta(slug).get().then(function(s){
+        var atual = s.exists ? s.data() : { soma: 0, contagem: 0 };
+        var soma = (atual.soma || 0) + nota;
+        var contagem = (atual.contagem || 0) + 1;
+        return refCarta(slug).set({
+          nome: nome, soma: soma, contagem: contagem,
+          mediaCache: soma / contagem, atualizadoEm: agora()
+        });
+      });
+    });
+  }
+  /* cria o voto (create-only pelas regras); se já existir, a regra nega
+     a escrita (vira "update", que é sempre false) — trata como "já
+     votou" e não propaga erro pra não travar quem está avaliando. */
+  function avaliarCarta(nome, nota, uid, pid){
+    var slug = slugCarta(nome);
+    nota = Math.max(0, Math.min(5, Math.round(Number(nota) || 0)));
+    return refVotoCarta(slug, uid, pid).set({ uid: uid, pid: pid, nota: nota, em: agora() })
+      .then(function(){ return tentarSomarCarta(slug, nome, nota, uid, 0); })
+      .then(function(){ return true; }, function(){ return false; });
+  }
+
+  /* todas as cartas que estiveram em jogo nessa partida, sem repetir —
+     inclui a própria, como o dono confirmou que tinha que ser. */
+  function cartasDaRodada(v){
+    var vistas = {}, out = [];
+    for (var i = 0; i < v.podio.length; i++){
+      var c = v.podio[i].carta;
+      if (c && !vistas[c]){ vistas[c] = 1; out.push(c); }
+    }
+    return out;
+  }
+
+  var avaliacaoFeitaPara = null;   // pid já avaliado nesta sessão do app
+  var acaoAposAvaliar = null;      // "sair" | "denovo"
+
+  function precisaAvaliar(v){
+    return !!(v && v.pid && v.pid !== avaliacaoFeitaPara && v.podio && v.podio.length > 0);
+  }
+
+  /* [{nome, input, label, tocado}] da avaliação aberta agora — mantido em
+     memória em vez de reconsultar o DOM: o slider some da versão publicada
+     em innerHTML de propósito (é assim que a bateria de testes simula o
+     DOM sem abrir navegador de verdade), então cada linha guarda sua
+     própria referência de elemento em vez de tentar reachar via seletor. */
+  var avaliarLinhas = [];
+  function abrirAvaliar(v){
+    var lista = $("avaliar-lista"); lista.innerHTML = ""; avaliarLinhas = [];
+    var cartas = cartasDaRodada(v);
+    cartas.forEach(function(nome){
+      var row = document.createElement("div");
+      row.className = "stack"; row.style.gap = "6px";
+      row.innerHTML = '<p style="margin:0"><b>' + esc(nome) + '</b> — <span class="sub"></span></p>';
+      var label = row.querySelector("span");
+      if (label) label.textContent = "arraste pra avaliar";
+      var input = document.createElement("input");
+      input.type = "range"; input.min = "0"; input.max = "5"; input.step = "1"; input.value = "0";
+      input.setAttribute("aria-label", "Dificuldade de " + nome);
+      var linha = { nome: nome, input: input, label: label, tocado: false };
+      input.addEventListener("input", function(){
+        linha.tocado = true;
+        if (linha.label) linha.label.textContent = "nota " + input.value + " de 5";
+        atualizarBotaoAvaliar();
+      });
+      row.appendChild(input);
+      lista.appendChild(row);
+      avaliarLinhas.push(linha);
+    });
+    atualizarBotaoAvaliar();
+    show("s-avaliar");
+  }
+  function atualizarBotaoAvaliar(){
+    var todasTocadas = avaliarLinhas.length > 0 && avaliarLinhas.every(function(l){ return l.tocado; });
+    $("avaliar-ok").disabled = !todasTocadas;
+  }
+  function concluirAvaliar(){
+    if (!SC) return;
+    var v = SC.vm(), uid = v.meuId, pid = v.pid;
+    var tarefas = avaliarLinhas.map(function(l){
+      return avaliarCarta(l.nome, Number(l.input.value), uid, pid);
+    });
+    avaliacaoFeitaPara = pid;
+    $("avaliar-ok").disabled = true;
+    Promise.all(tarefas).then(function(){
+      var acao = acaoAposAvaliar; acaoAposAvaliar = null;
+      if (acao === "denovo") prosseguirJogarDeNovo();
+      else sairDaSala();
+    });
+  }
+  function prosseguirJogarDeNovo(){
+    if (!SC) return;
+    $("fim-denovo").disabled = true;
+    SC.jogarDeNovo().then(noop, function(e){
+      $("fim-err").textContent = msgErro(e);
+      $("fim-denovo").disabled = false;
+    });
+  }
+
+  /* ============================================================
      CriarSalaCliente(db) — uma visao de UM jogador sobre UMA sala.
      A pagina cria um; o arquivo de teste cria varios sobre o mesmo db.
      ============================================================ */
@@ -2136,7 +2270,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
         souHost: ehHost(), fase: fase(),
         mask: (C.sala && !apagada && C.sala.mask != null) ? C.sala.mask : draft.mask,
         nivel: (C.sala && !apagada && C.sala.nivel != null) ? C.sala.nivel : draft.nivel,
-        iniciadaEm: (C.sala && !apagada && C.sala.iniciadaEm) || null
+        iniciadaEm: (C.sala && !apagada && C.sala.iniciadaEm) || null,
+        pid: (C.sala && !apagada && C.sala.partidaId) || null
       };
       var m = membrosOrdenados();
       var pa = participantesAtuais(), pset = {};
@@ -3781,17 +3916,20 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     }, 400);
   });
 
-  $("fim-sair").addEventListener("click", sairDaSala);
+  $("fim-sair").addEventListener("click", function(){
+    var v = SC && SC.vm();
+    if (precisaAvaliar(v)){ acaoAposAvaliar = "sair"; abrirAvaliar(v); return; }
+    sairDaSala();
+  });
   $("fim-denovo").addEventListener("click", function(){
     if (!SC) return;
-    $("fim-denovo").disabled = true;
-    SC.jogarDeNovo().then(noop, function(e){
-      $("fim-err").textContent = msgErro(e);
-      $("fim-denovo").disabled = false;
-    });
+    var v = SC.vm();
+    if (precisaAvaliar(v)){ acaoAposAvaliar = "denovo"; abrirAvaliar(v); return; }
+    prosseguirJogarDeNovo();
   });
   $("fim-hist").addEventListener("click", abrirHist);
   $("fim-apagar").addEventListener("click", confirmarApagar);
+  $("avaliar-ok").addEventListener("click", concluirAvaliar);
 
   $("hist-voltar").addEventListener("click", function(){
     histAberto = false;

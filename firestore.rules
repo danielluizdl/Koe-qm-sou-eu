@@ -188,6 +188,45 @@ service cloud.firestore {
     }
 
     /* ---------------------------------------------------------
+       cartas/{slug} — agregado de dificuldade (item 8). Cliente
+       escreve direto, sem Cloud Function: ao contrário do saldo do
+       rank, não tem valor de trapaça — só ajuda a recalibrar quem é
+       fácil/médio/difícil no baralho. A trava aqui não é "impedir
+       fraude", é impedir que um bug em duas abas ao mesmo tempo
+       destrua o agregado: contagem só sobe de 1 em 1, soma só sobe
+       entre 0 e 5 (uma nota válida) por escrita — nunca desce, nunca
+       zera. Mesmo espírito do contador de ID em contadores/{chave}. */
+    match /cartas/{slug} {
+      allow read: if logado();
+      allow create: if logado()
+                    && campos().soma is int && campos().soma >= 0 && campos().soma <= 5
+                    && campos().contagem == 1;
+      allow update: if logado() && existia()
+                    && campos().contagem == anterior().contagem + 1
+                    && campos().soma >= anterior().soma
+                    && campos().soma <= anterior().soma + 5;
+      allow delete: if false;
+
+      /* um voto por pessoa por partida: o ID do doc é uid_pid, e só
+         quem é dono do uid cria o próprio. Nunca dá pra reescrever
+         (update/delete falsos) — vota errado, vive com isso; é só
+         uma nota de dificuldade, não o placar.
+
+         Sem leitura: o cliente não confere "já votei?" antes de
+         escrever (isso exigiria permissão de ler um doc que talvez
+         nem exista — resource null trava a regra). Ele tenta criar
+         direto e trata a negação (doc já existe -> vira update,
+         update é sempre false) como "já votou, segue o jogo". */
+      match /votos/{votoId} {
+        allow read: if false;
+        allow create: if eu(campos().uid)
+                      && votoId == (campos().uid + "_" + campos().pid)
+                      && campos().nota is int && campos().nota >= 0 && campos().nota <= 5;
+        allow update, delete: if false;
+      }
+    }
+
+    /* ---------------------------------------------------------
        salas/{codigo} — estado ao vivo da mesa.
 
        ⚠️  DEPENDE da migração de meuId -> auth.uid descrita no topo.
