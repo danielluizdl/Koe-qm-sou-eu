@@ -696,6 +696,7 @@
         <span class="tag" id="play-r-val" style="font-size:.78rem;padding:6px 10px">Rodada 1</span>
         <button id="play-r-plus" aria-label="Próxima rodada">+</button>
       </div>
+      <span class="tag" id="play-clock" hidden></span>
       <span class="tag" id="play-code"></span>
     </div>
     <div class="stack" style="gap:8px">
@@ -715,12 +716,15 @@
       </div>
     </div>
     <div class="stack" id="play-mesa-sec" style="gap:10px">
-      <p class="eyebrow">Na mesa</p>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <p class="eyebrow" style="margin:0">Na mesa</p>
+        <button type="button" class="tag" id="play-mesa-toggle" aria-pressed="false">Esconder</button>
+      </div>
       <div class="rows" id="play-oponentes"></div>
     </div>
     <div class="stack" id="play-notas-sec" style="gap:10px">
       <p class="eyebrow">Suas anotações</p>
-      <textarea id="play-notas" class="field" rows="3"
+      <textarea id="play-notas" class="field" rows="6" style="flex:1"
                 placeholder="dicas que te deram, palpites…" aria-label="Anotações"></textarea>
     </div>
     <div class="stack" id="play-placar-sec" style="gap:10px">
@@ -1189,6 +1193,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     $(id).classList.add("on");
     window.scrollTo(0, 0);
     if (id === "s-card" || id === "s-carta" || id === "s-play") keepAwake(); else releaseAwake();
+    if (id === "s-play") iniciarPlayClock(); else pararPlayClock();
   }
   function keepAwake(){
     if (!("wakeLock" in navigator) || wakeLock) return;
@@ -1675,6 +1680,40 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   }
   function notasKey(codigo, id){ return "quemsoueu:notas:" + codigo + ":" + id; }
 
+  /* esconder "Na mesa" é por sala, não global — cada partida decide de novo */
+  function mesaEscondidaKey(codigo){ return "quemsoueu:mesaescondida:" + codigo; }
+  function mesaEscondida(codigo){
+    try { return localStorage.getItem(mesaEscondidaKey(codigo)) === "1"; } catch(e){ return false; }
+  }
+  function setMesaEscondida(codigo, val){
+    try { localStorage.setItem(mesaEscondidaKey(codigo), val ? "1" : "0"); } catch(e){}
+  }
+
+  function fmtTempo(ms){
+    if (ms == null || ms < 0) ms = 0;
+    var s = Math.floor(ms / 1000);
+    var m = Math.floor(s / 60); s = s % 60;
+    return m + ":" + (s < 10 ? "0" : "") + s;
+  }
+  var playClockTimer = null;
+  function pararPlayClock(){
+    if (playClockTimer){ clearInterval(playClockTimer); playClockTimer = null; }
+  }
+  function iniciarPlayClock(){
+    pararPlayClock();
+    atualizarPlayClock();
+    playClockTimer = setInterval(atualizarPlayClock, 500);
+  }
+  function atualizarPlayClock(){
+    if (telaVisivel() !== "s-play" || !SC || !SC.ativo){ pararPlayClock(); return; }
+    var v = SC.vm();
+    var el = $("play-clock");
+    if (!v.iniciadaEm){ el.hidden = true; return; }
+    el.hidden = false;
+    var fim = v.jaAcertei ? v.meuAcertouEm : agora();
+    el.textContent = fmtTempo(fim - v.iniciadaEm);
+  }
+
   /* ============================================================
      CriarSalaCliente(db) — uma visao de UM jogador sobre UMA sala.
      A pagina cria um; o arquivo de teste cria varios sobre o mesmo db.
@@ -1777,7 +1816,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       return refSala().set({
         codigo: C.codigo, criadaEm: t, ultimoUsoEm: t, hostId: C.meuId,
         mask: mask, nivel: nivel, fase: "lobby", participantes: null,
-        seed: null, partidaCriadaEm: null, partidaId: null, fimEm: null
+        seed: null, partidaCriadaEm: null, partidaId: null, fimEm: null,
+        iniciadaEm: null
       }).then(function(){ return refHist().set({ items: {} }); })
         .then(function(){ return refJogador(C.meuId).set(novoJogador(C.meuId, C.meuNick, t)); })
         .then(function(){
@@ -1949,7 +1989,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
           fase: "lobby",
           mask: (mask == null ? C.sala.mask : mask),
           nivel: (nivel == null ? C.sala.nivel : nivel),
-          participantes: null, seed: null, partidaCriadaEm: null, partidaId: null, fimEm: null
+          participantes: null, seed: null, partidaCriadaEm: null, partidaId: null, fimEm: null,
+          iniciadaEm: null
         });
       });
     };
@@ -1970,7 +2011,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       var f = C.sala.fase;
       if (!C._avancando && f === "revelando" && todos("revelou")){
         C._avancando = true;
-        refSala().update({ fase: "jogando" }).then(limpaAvanco, limpaAvanco);
+        refSala().update({ fase: "jogando", iniciadaEm: agora() }).then(limpaAvanco, limpaAvanco);
       } else if (!C._avancando && f === "jogando" && todos("acertouEm")){
         C._avancando = true;
         refSala().update({ fase: "fim", fimEm: agora() }).then(limpaAvanco, limpaAvanco);
@@ -2094,7 +2135,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
         meuId: C.meuId, meuNick: C.meuNick,
         souHost: ehHost(), fase: fase(),
         mask: (C.sala && !apagada && C.sala.mask != null) ? C.sala.mask : draft.mask,
-        nivel: (C.sala && !apagada && C.sala.nivel != null) ? C.sala.nivel : draft.nivel
+        nivel: (C.sala && !apagada && C.sala.nivel != null) ? C.sala.nivel : draft.nivel,
+        iniciadaEm: (C.sala && !apagada && C.sala.iniciadaEm) || null
       };
       var m = membrosOrdenados();
       var pa = participantesAtuais(), pset = {};
@@ -2109,7 +2151,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
           id: j.id, nick: j.nick, souEu: j.id === C.meuId,
           ehHost: !!(C.sala && j.id === C.sala.hostId),
           presente: presente(j), participante: part,
-          revelou: !!j.revelou, acertou: !!j.acertouEm,
+          revelou: !!j.revelou, acertou: !!j.acertouEm, acertouEm: j.acertouEm || null,
           carta: j.carta || null, posicao: j.posicao || null, slot: j.slot || null
         });
       }
@@ -2118,6 +2160,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       v.minhaCarta = eu ? eu.carta : null;
       v.jaEscondi = !!(eu && eu.revelou);
       v.jaAcertei = !!(eu && eu.acertouEm);
+      v.meuAcertouEm = (eu && eu.acertouEm) || null;
       v.minhaPosicao = (eu && eu.posicao) ? eu.posicao : null;
 
       v.cartasNaMesa = [];
@@ -3579,14 +3622,19 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     }
     $("play-mesa-sec").hidden = !mesaLiberada;
     $("play-notas-sec").hidden = !mesaLiberada;
+    var mesaEsc = mesaEscondida(v.codigo);
+    $("play-oponentes").hidden = mesaEsc;
+    $("play-mesa-toggle").textContent = mesaEsc ? "Mostrar" : "Esconder";
+    $("play-mesa-toggle").setAttribute("aria-pressed", mesaEsc ? "true" : "false");
     var op = $("play-oponentes"); op.innerHTML = "";
     for (var i = 0; i < v.membros.length; i++){
       var m = v.membros[i];
       if (!m.participante || m.souEu) continue;
       var sub = m.carta ? m.carta : (m.revelou ? "(mostrou)" : "ainda não mostrou");
-      op.innerHTML += '<div class="row"><span class="grow"><b>' + esc(m.nick) +
+      var tempo = (m.acertou && v.iniciadaEm && m.acertouEm) ? fmtTempo(m.acertouEm - v.iniciadaEm) : "";
+      op.innerHTML += '<div class="row' + (m.acertou ? " win" : "") + '"><span class="grow"><b>' + esc(m.nick) +
         '</b><span class="sub">' + esc(sub) + '</span></span>' +
-        (m.acertou ? '<span class="pos done">' + m.posicao + 'º</span>' : '') + '</div>';
+        (m.acertou ? '<span class="pos done">' + m.posicao + 'º' + (tempo ? " · " + tempo : "") + '</span>' : '') + '</div>';
     }
     var pl = $("play-placar"); pl.innerHTML = "";
     for (var k = 0; k < v.placar.length; k++){
@@ -3714,6 +3762,14 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   $("senha-ok").addEventListener("click", enviarPalpite);
   $("senha-input").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); enviarPalpite(); } });
   $("play-sair").addEventListener("click", sairDoJogo);
+  $("play-mesa-toggle").addEventListener("click", function(){
+    var codigo = (modoAtivo === "mesa" && MESA) ? MESA.codigo : (SC ? SC.codigo : "");
+    var novo = !mesaEscondida(codigo);
+    setMesaEscondida(codigo, novo);
+    $("play-oponentes").hidden = novo;
+    $("play-mesa-toggle").textContent = novo ? "Mostrar" : "Esconder";
+    $("play-mesa-toggle").setAttribute("aria-pressed", novo ? "true" : "false");
+  });
   $("play-notas").addEventListener("input", function(){
     clearTimeout(notasT);
     var val = $("play-notas").value;

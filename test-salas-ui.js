@@ -248,6 +248,26 @@ async function main() {
   ok(tela() === "s-play" && A.ui.SC.vm().fase === "jogando", "continuar leva pra s-play; todos revelaram -> jogando");
   ok(g("play-mesa-sec").hidden === false, "lista de adversários liberada depois de todos mostrarem");
 
+  // C7.1: esconder/mostrar "Na mesa" — some só a lista, o botão continua ali
+  ok(g("play-oponentes").hidden === false, "lista de oponentes visível por padrão");
+  click("play-mesa-toggle");
+  ok(g("play-oponentes").hidden === true, "esconder some com a lista, não com a seção inteira");
+  ok(g("play-mesa-toggle").textContent === "Mostrar", "botão vira 'Mostrar'");
+  click("play-mesa-toggle");
+  ok(g("play-oponentes").hidden === false, "clicar de novo mostra de novo");
+
+  // C7.2: anotações maiores (estático, essa DOM simulada não lê atributos por getAttribute)
+  ok(/id="play-notas"[^>]*rows="6"/.test(headHtml), "anotações com rows=6 (era 3)");
+
+  // C7.3: relógio soma tempo de verdade desde que a fase virou "jogando"
+  ok(A.ui.SC.vm().iniciadaEm > 0, "sala.iniciadaEm gravado na virada pra jogando");
+  ok(g("play-clock").hidden === false, "relógio aparece assim que a fase vira jogando");
+  const relogio1 = g("play-clock").textContent;
+  await new Promise(r => setTimeout(r, 1100));
+  flushCountdown();
+  const relogio2 = g("play-clock").textContent;
+  ok(relogio1 !== relogio2, "relógio avança entre duas leituras, era " + relogio1 + " virou " + relogio2);
+
   // bloco de notas: salva com debounce e sobrevive a "reload"
   g("play-notas").value = "o Bia falou que eu voo";
   g("play-notas")._fire("input");
@@ -266,8 +286,18 @@ async function main() {
   await settle();
   ok(A.ui.SC.vm().jaAcertei === true, "palpite certo registra o acerto");
 
-  // B e C acertam
+  // B acerta primeiro; C ainda não — dá pra ver o destaque no meio da partida
   await cb.palpite(cb.vm().minhaCarta); await settle();
+  ok(tela() === "s-play", "com a Cau faltando, o host continua em s-play");
+
+  // C7.4: acerto de outro jogador — borda verde (classe "win", já usada no
+  // placar pro 1º lugar) + posição + tempo, na linha de QUEM acertou
+  const opHtml = g("play-oponentes").innerHTML;
+  ok(/class="row win"/.test(opHtml),
+     "linha de quem acertou ganha a classe que pinta a borda verde, veio: " + opHtml);
+  ok(/2º/.test(opHtml), "mostra a posição de quem acertou (2º, depois do host)");
+  ok(/\d+:\d{2}/.test(opHtml), "mostra o tempo do acerto, veio: " + opHtml);
+
   await cc.palpite(cc.vm().minhaCarta); await settle();
   ok(tela() === "s-fim", "última pessoa acerta -> s-fim, foi pra " + tela());
   ok(g("fim-podio").querySelectorAll(".row").length === 3, "pódio pintado com 3 linhas");
