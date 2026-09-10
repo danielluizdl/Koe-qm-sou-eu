@@ -11,7 +11,6 @@
     "deploy:regras": "npx firebase deploy --only firestore:rules --project quem-sou-eu-e3e32",
     "deploy:site": "node build.js && npx firebase deploy --only hosting --project quem-sou-eu-e3e32",
     "test:regras": "firebase emulators:exec --only firestore --project demo-quem-sou-eu \"node test-regras.js\"",
-    "test:login": "node build.js --stage-functions && firebase emulators:exec --only firestore,auth,functions --project demo-quem-sou-eu \"node test-login-server-emulador.js\"",
     "sites": "npx firebase hosting:sites:list --project quem-sou-eu-e3e32",
     "entrar": "npx firebase login"
   },

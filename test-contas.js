@@ -138,14 +138,20 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
   const achado = await A.porNick("  aNa ");
   t("busca por nick acha, sem ligar pra caixa/espaço", achado && achado.uid === "u1");
   t("busca por nick traz o nick de exibição", achado.nick === "Ana", String(achado.nick));
-  t("busca por nick NÃO expõe e-mail", achado.email === undefined, JSON.stringify(achado));
+  /* De propósito: nicks/{chave} é lido SEM estar logado pra login por
+     nick funcionar sem Cloud Function (ver firebase-boot.js). O preço
+     é expor o e-mail de quem tem nick pra quem souber o nick — decisão
+     do dono, documentada em firestore.rules. */
+  t("busca por nick expõe e-mail (de propósito, é o que faz login por nick funcionar sem servidor)",
+    achado.email === "ana@mail.com", JSON.stringify(achado));
   t("busca por nick inexistente devolve null", (await A.porNick("ninguem")) === null);
 }
 
-/* ========= 2b. A separação público/privado é o que protege o e-mail =========
+/* ========= 2b. perfis/{uid} (agregado do rank) continua sem e-mail =========
    Regra do Firestore libera o documento inteiro ou nada. Se agregado e
-   e-mail morassem juntos, o rank de amigos faria amigo ler e-mail de
-   amigo. */
+   e-mail morassem juntos em perfis/{uid} (lido por QUALQUER logado pra
+   montar o rank de amigos), amigo leria e-mail de amigo. nicks/{chave}
+   é uma exceção deliberada e separada (ver teste acima), não isso. */
 {
   const db = makeDb();
   const A = CriarContas(db);
@@ -163,9 +169,9 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
   t("dono enxerga o agregado junto", meu.saldo === 0);
 
   const docs = Object.keys(db._dump());
-  t("e-mail mora só no doc privado",
+  t("e-mail só mora em usuarios/ (privado) e nicks/ (público, de propósito — login por nick)",
     docs.filter(k => JSON.stringify(db._dump()[k]).indexOf("ana@mail.com") >= 0)
-        .every(k => k.indexOf("usuarios/") === 0),
+        .every(k => k.indexOf("usuarios/") === 0 || k.indexOf("nicks/") === 0),
     docs.join(","));
   t("existe um doc público separado", docs.indexOf("perfis/u1") >= 0, docs.join(","));
 }

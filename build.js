@@ -19,7 +19,7 @@ const JOGO = process.env.JOGO_SRC || "quem-sou-eu-temas.html";
    diretório). Roda pelo predeploy em firebase.json. Não toca no site. */
 if (process.argv.indexOf("--stage-functions") >= 0){
   const DEST = path.join(RAIZ, "functions");
-  ["rank-server.js", "pontuacao.js", "login-server.js", "contas.js", "firebase-config.js"].forEach(function(f){
+  ["rank-server.js", "pontuacao.js"].forEach(function(f){
     fs.copyFileSync(path.join(RAIZ, f), path.join(DEST, f));
     console.log("functions/" + f + "  (cópia de ../" + f + ")");
   });

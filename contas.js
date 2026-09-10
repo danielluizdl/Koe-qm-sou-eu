@@ -134,16 +134,19 @@
     /* ---------------- nick: reserva com lease ----------------
        Mesmo padrão que criar sala usa: acquire, confere, grava. O
        lease evita que dois cadastros simultâneos levem o mesmo nick. */
-    function reservarNick(chave, uid, exibicao){
+    function reservarNick(chave, uid, exibicao, email){
       return refNick(chave).acquire({ holder: uid, ttlMs: 8000 }).then(function(res){
         if (!res || !res.acquired) throw erro("nick_em_uso", "nick sendo registrado agora");
         return refNick(chave).get().then(function(s){
           if (s.exists && s.data().uid !== uid) throw erro("nick_em_uso", "nick já existe");
-          /* guarda o nick de exibição junto: adicionar amigo por nick
-             passa a ser UMA leitura, sem precisar abrir o perfil de
-             um desconhecido. */
+          /* guarda o nick de exibição E o e-mail junto: adicionar amigo
+             por nick passa a ser UMA leitura, sem precisar abrir o
+             perfil de um desconhecido — e login por nick também vira
+             uma leitura só, sem Cloud Function (ver garantirNickPublico
+             e firebase-boot.js#entrarPorNick). */
           return refNick(chave).set({
-            uid: uid, chave: chave, nick: normNick(exibicao || chave), em: agora()
+            uid: uid, chave: chave, nick: normNick(exibicao || chave),
+            email: String(email || "").toLowerCase(), em: agora()
           });
         });
       });
@@ -218,7 +221,7 @@
       var chave = chaveNick(dados.nick), t = agora(), meuId = "";
       return refPerfil(uid).get().then(function(s){
         if (s.exists) throw erro("ja_existe", "esse uid já tem perfil");
-        return reservarNick(chave, uid, dados.nick);
+        return reservarNick(chave, uid, dados.nick, dados.email);
       }).then(function(){
         return reservarId(uid);
       }).then(function(id){
@@ -272,6 +275,25 @@
             return p;
           });
         }, function(){ return p; });   // sem ID é melhor que sem perfil
+      });
+    };
+
+    /* Contas criadas ANTES do login por nick virar uma leitura direta
+       (quando ainda dependia de Cloud Function) têm nicks/{chave} sem
+       o campo email — migra sozinho na primeira leitura do próprio
+       perfil, mesmo padrão do garantirId. Sem isso, contas antigas
+       continuam sem conseguir entrar só com o nick. */
+    A.garantirNickPublico = function(uid){
+      return A.perfilPublico(uid).then(function(p){
+        if (!p || !p.nickChave) return null;
+        return refNick(p.nickChave).get().then(function(s){
+          if (!s.exists || s.data().uid !== uid || s.data().email) return null;
+          return refUsuario(uid).get().then(function(us){
+            var email = us.exists && us.data().email;
+            if (!email) return null;
+            return refNick(p.nickChave).update({ email: String(email).toLowerCase() });
+          }, noop);
+        }, noop);
       });
     };
 
@@ -330,21 +352,27 @@
       var nova = chaveNick(novoNick);
       return A.perfilPublico(uid).then(function(p){
         if (!p) throw erro("sem_perfil", "perfil não existe");
-        if (p.nickChave === nova){
-          return reservarNick(nova, uid, novoNick).then(function(){
-            return refPerfil(uid).update({ nick: normNick(novoNick), atualizadoEm: agora() });
+        /* o e-mail do nick novo/atual precisa vir de algum lugar: o
+           dono é quem tem — lê o próprio usuarios/{uid} (privado, só
+           ele acessa) em vez de pedir de novo na tela. */
+        return refUsuario(uid).get().then(function(s){
+          var email = (s.exists && s.data().email) || "";
+          if (p.nickChave === nova){
+            return reservarNick(nova, uid, novoNick, email).then(function(){
+              return refPerfil(uid).update({ nick: normNick(novoNick), atualizadoEm: agora() });
+            });
+          }
+          var antiga = p.nickChave;
+          return reservarNick(nova, uid, novoNick, email).then(function(){
+            return refPerfil(uid).update({
+              nick: normNick(novoNick), nickChave: nova, atualizadoEm: agora()
+            });
+          }).then(function(){
+            /* libera o antigo por último: se cair no meio, a pessoa fica
+               com dois nicks reservados, que é melhor que perder o novo
+               pra outra pessoa. */
+            return refNick(antiga)["delete"]().then(noop, noop);
           });
-        }
-        var antiga = p.nickChave;
-        return reservarNick(nova, uid, novoNick).then(function(){
-          return refPerfil(uid).update({
-            nick: normNick(novoNick), nickChave: nova, atualizadoEm: agora()
-          });
-        }).then(function(){
-          /* libera o antigo por último: se cair no meio, a pessoa fica
-             com dois nicks reservados, que é melhor que perder o novo
-             pra outra pessoa. */
-          return refNick(antiga)["delete"]().then(noop, noop);
         });
       }).then(function(){ return A.perfil(uid); });
     };

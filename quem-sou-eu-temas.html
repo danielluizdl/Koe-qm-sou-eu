@@ -2616,9 +2616,13 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   function carregarPerfil(){
     if (!contaLigada()){ CONTA.perfil = null; pintarConta(); pintarHome(); return; }
-    /* garantirId dá ID a quem se cadastrou antes dele existir. Roda
-       antes de ler o perfil pra tela nunca aparecer sem ID. */
+    /* garantirId dá ID a quem se cadastrou antes dele existir.
+       garantirNickPublico preenche o e-mail em nicks/{chave} pra quem
+       se cadastrou antes do login por nick virar leitura direta. Os
+       dois rodam antes de ler o perfil. */
     CONTA.api.garantirId(CONTA.ident.uid)["catch"](noop).then(function(){
+      return CONTA.api.garantirNickPublico(CONTA.ident.uid)["catch"](noop);
+    }).then(function(){
       return CONTA.api.perfil(CONTA.ident.uid);
     }).then(function(p){
       CONTA.perfil = p;

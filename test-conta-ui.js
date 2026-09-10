@@ -172,25 +172,16 @@ function makeFirebase(db){
       return Promise.resolve({ uid: c.uid, email });
     },
 
-    /* Simula a Cloud Function entrarPorNick: resolve nick -> uid via o
-       MESMO db que contas.js grava (nicks/{chave}), depois confere a
-       senha contra o registro interno deste mock — o suficiente pra
-       testar a FIAÇÃO do cliente (campo único, detecção de "@", tela
-       de erro). A prova de que o servidor de verdade faz isso direito
-       é test-login-server-emulador.js, contra os emuladores reais. */
+    /* Mesmo caminho de firebase-boot.js#entrarPorNick de verdade: lê o
+       e-mail publicado em nicks/{chave} (leitura pública, sem Cloud
+       Function) e loga com ele. Nick sem doc, sem e-mail, ou senha
+       errada saem todos pelo MESMO erro genérico do F.entrar. */
     entrarPorNick(nick, senha){
       const chave = chaveNick(nick);
       return db.doc("nicks/" + chave).get().then(function(s){
-        if (!s.exists) return Promise.reject(authErr("auth/invalid-credential"));
-        const uid = s.data().uid;
-        for (const [email, c] of contas){
-          if (c.uid === uid){
-            if (c.senha !== String(senha)) return Promise.reject(authErr("auth/invalid-credential"));
-            F._entrar({ uid, email });
-            return { uid, email };
-          }
-        }
-        return Promise.reject(authErr("auth/invalid-credential"));
+        const email = s.exists && s.data().email;
+        if (!email) return Promise.reject(authErr("auth/invalid-credential"));
+        return F.entrar(email, senha);
       });
     },
 

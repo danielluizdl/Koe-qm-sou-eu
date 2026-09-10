@@ -24,7 +24,6 @@
   var ouvintes = [];
   var estado = { pronto: false, db: null, auth: null, identidade: null, erro: null };
   var sdkAuth = null;
-  var chamarEntrarPorNick = null;   // httpsCallable("entrarPorNick"), setado na carga
 
   function avisar(){
     var i, copia = ouvintes.slice();
@@ -77,25 +76,33 @@
     ).then(function(cred){ return cred.user; });
   };
 
-  /* Login por nick: passa pela Cloud Function entrarPorNick, que
-     resolve nick -> e-mail e confere a senha do lado de dentro (o
-     e-mail nunca chega aqui) e devolve um token de acesso. Ver
-     login-server.js pro porquê disso não dar pra fazer só no
-     cliente. */
+  /* Login por nick: lê o e-mail publicado em nicks/{chave} (leitura
+     pública de propósito — ver firestore.rules) e loga direto com
+     signInWithEmailAndPassword. Sem Cloud Function: chegou a existir
+     uma (login-server.js, removida), mas ela exige o projeto no plano
+     Blaze, e o dono preferiu não pagar por isso — a troca é expor o
+     e-mail de quem tem conta pra quem souber o nick, aceitável num
+     jogo de festa entre amigos, não um produto público.
+
+     Nick errado, nick sem e-mail (conta muito antiga que ainda não
+     rodou garantirNickPublico) e senha errada saem com a MESMA
+     mensagem genérica — não dá pra saber de fora qual dos três foi. */
+  function erroNickOuSenha(){
+    var e = new Error("nick ou senha não conferem");
+    e.code = "auth/invalid-credential";
+    return e;
+  }
   API.entrarPorNick = function(nick, senha){
-    if (!estado.auth || !sdkAuth || !chamarEntrarPorNick) return semSdk();
-    return chamarEntrarPorNick({ nick: String(nick || ""), senha: String(senha || "") })
-      .then(function(res){
-        return sdkAuth.signInWithCustomToken(estado.auth, res.data.token);
-      })
-      .then(function(cred){ return cred.user; }, function(e){
-        /* a Function sempre devolve "unauthenticated" com a mesma
-           mensagem genérica, seja nick errado ou senha errada — só
-           traduz o formato do erro pro mesmo que API.entrar usa. */
-        var erro = new Error(e && e.message || "nick ou senha não conferem");
-        erro.code = "auth/invalid-credential";
-        throw erro;
-      });
+    if (!estado.auth || !sdkAuth || !estado.db) return semSdk();
+    var CONTAS = raiz.CONTAS;
+    var chave = CONTAS && CONTAS.chaveNick ? CONTAS.chaveNick(nick) : "";
+    if (!chave) return Promise.reject(erroNickOuSenha());
+    return estado.db.doc("nicks/" + chave).get().then(function(s){
+      var email = s && s.exists && s.data().email;
+      if (!email) throw erroNickOuSenha();
+      return sdkAuth.signInWithEmailAndPassword(estado.auth, email, String(senha || ""))
+        .then(function(cred){ return cred.user; }, function(){ throw erroNickOuSenha(); });
+    }, function(){ throw erroNickOuSenha(); });
   };
 
   /* Um campo só na tela de login aceita os dois: se tem "@", é
@@ -130,16 +137,13 @@
     Promise.all([
       import(BASE + "firebase-app.js"),
       import(BASE + "firebase-firestore.js"),
-      import(BASE + "firebase-auth.js"),
-      import(BASE + "firebase-functions.js")
+      import(BASE + "firebase-auth.js")
     ]).then(function(mods){
-      var app = mods[0], fs = mods[1], au = mods[2], fn = mods[3];
+      var app = mods[0], fs = mods[1], au = mods[2];
       sdkAuth = au;
 
       var instancia = app.initializeApp(CONFIG);
       var firestore = fs.getFirestore(instancia);
-      var funcoes = fn.getFunctions(instancia);
-      chamarEntrarPorNick = fn.httpsCallable(funcoes, "entrarPorNick");
 
       estado.auth = au.getAuth(instancia);
       estado.db = criarDb({

@@ -125,11 +125,18 @@ service cloud.firestore {
     }
 
     /* ---------------------------------------------------------
-       nicks/{chave} — índice de unicidade, legível por quem está
-       logado (é como se adiciona amigo por nick).
-       --------------------------------------------------------- */
+       nicks/{chave} — índice de unicidade E login por nick.
+
+       LEITURA PÚBLICA DE PROPÓSITO, sem exigir login: é o que permite
+       o cliente resolver nick -> e-mail e chamar
+       signInWithEmailAndPassword direto, sem Cloud Function (que
+       exigiria o projeto no plano Blaze). O preço, aceito
+       conscientemente pelo dono: o e-mail de qualquer conta fica
+       visível pra quem souber o nick dela, mesmo sem ter conta —
+       aceitável aqui porque é um jogo pra jogar com amigos, não um
+       produto público com estranhos. Escrita continua só do dono. */
     match /nicks/{chave} {
-      allow read: if logado();
+      allow read: if true;
       allow create: if logado() && campos().uid == request.auth.uid
                     && campos().chave == chave;
       allow update: if logado() && existia() && anterior().uid == request.auth.uid

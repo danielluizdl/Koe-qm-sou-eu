@@ -25,7 +25,6 @@ const suites = [
   ["contas — backend capability",  "test-contas.js",            {}],
   ["contas — backend firestore",   "test-contas.js",            { DB: "firestore" }],
   ["rank — lado servidor",         "test-rank-server.js",       {}],
-  ["login por nick — lógica",      "test-login-server.js",      {}],
   ["adaptador vs SDK real",        "test-sdk-real.js",          {}],
   ["auditoria do baralho",         "audit.js",                  {}]
 ];

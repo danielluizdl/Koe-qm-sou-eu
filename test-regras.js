@@ -51,7 +51,7 @@ async function t(nome, fn){
     await setDoc(doc(db, "perfis/bia"), perfilBase("bia"));
     await setDoc(doc(db, "usuarios/ana"), { uid:"ana", nome:"Ana", email:"ana@x.co", criadoEm:1 });
     await setDoc(doc(db, "usuarios/bia"), { uid:"bia", nome:"Bia", email:"bia@x.co", criadoEm:1 });
-    await setDoc(doc(db, "nicks/ana"), { uid:"ana", chave:"ana", nick:"Ana", em:1 });
+    await setDoc(doc(db, "nicks/ana"), { uid:"ana", chave:"ana", nick:"Ana", email:"ana@x.co", em:1 });
     await setDoc(doc(db, "salas/FESTA"), { codigo:"FESTA", hostId:"ana", fase:"lobby", mask:1, nivel:0 });
     await setDoc(doc(db, "salas/FESTA/jogadores/ana"), { id:"ana", nick:"Ana" });
     await setDoc(doc(db, "salas/FESTA/jogadores/bia"), { id:"bia", nick:"Bia" });
@@ -126,9 +126,16 @@ async function t(nome, fn){
   await t("outro não grava partida na conta alheia",
     () => assertFails(setDoc(doc(bia, "usuarios/ana/partidas/p3"), { pid:"p3", n:3 })));
 
-  /* ============ nicks: índice de unicidade ============ */
+  /* ============ nicks: índice de unicidade E login por nick ============ */
   await t("logado lê o índice (é como se acha amigo por nick)",
     () => assertSucceeds(getDoc(doc(bia, "nicks/ana"))));
+  await t("DESLOGADO também lê — é o que faz login por nick funcionar sem servidor",
+    () => assertSucceeds(getDoc(doc(fora, "nicks/ana"))));
+  await t("e o e-mail vem junto (é o preço aceito da leitura pública)",
+    () => (async () => {
+      const s = await getDoc(doc(fora, "nicks/ana"));
+      if (s.data().email !== "ana@x.co") throw new Error("e-mail não veio: " + JSON.stringify(s.data()));
+    })());
   await t("reserva nick apontando pro próprio uid",
     () => assertSucceeds(setDoc(doc(zeca, "nicks/zeca"), { uid:"zeca", chave:"zeca", nick:"Zeca", em:1 })));
   await t("NÃO reserva nick apontando pra outro",
