@@ -24,6 +24,7 @@
   var ouvintes = [];
   var estado = { pronto: false, db: null, auth: null, identidade: null, erro: null };
   var sdkAuth = null;
+  var chamarEntrarPorNick = null;   // httpsCallable("entrarPorNick"), setado na carga
 
   function avisar(){
     var i, copia = ouvintes.slice();
@@ -76,6 +77,34 @@
     ).then(function(cred){ return cred.user; });
   };
 
+  /* Login por nick: passa pela Cloud Function entrarPorNick, que
+     resolve nick -> e-mail e confere a senha do lado de dentro (o
+     e-mail nunca chega aqui) e devolve um token de acesso. Ver
+     login-server.js pro porquê disso não dar pra fazer só no
+     cliente. */
+  API.entrarPorNick = function(nick, senha){
+    if (!estado.auth || !sdkAuth || !chamarEntrarPorNick) return semSdk();
+    return chamarEntrarPorNick({ nick: String(nick || ""), senha: String(senha || "") })
+      .then(function(res){
+        return sdkAuth.signInWithCustomToken(estado.auth, res.data.token);
+      })
+      .then(function(cred){ return cred.user; }, function(e){
+        /* a Function sempre devolve "unauthenticated" com a mesma
+           mensagem genérica, seja nick errado ou senha errada — só
+           traduz o formato do erro pro mesmo que API.entrar usa. */
+        var erro = new Error(e && e.message || "nick ou senha não conferem");
+        erro.code = "auth/invalid-credential";
+        throw erro;
+      });
+  };
+
+  /* Um campo só na tela de login aceita os dois: se tem "@", é
+     e-mail; senão, é nick. */
+  API.entrarComIdentificador = function(identificador, senha){
+    var t = String(identificador || "").trim();
+    return t.indexOf("@") >= 0 ? API.entrar(t, senha) : API.entrarPorNick(t, senha);
+  };
+
   API.esqueciSenha = function(email){
     if (!estado.auth || !sdkAuth) return semSdk();
     return sdkAuth.sendPasswordResetEmail(estado.auth, String(email || "").trim().toLowerCase());
@@ -101,13 +130,16 @@
     Promise.all([
       import(BASE + "firebase-app.js"),
       import(BASE + "firebase-firestore.js"),
-      import(BASE + "firebase-auth.js")
+      import(BASE + "firebase-auth.js"),
+      import(BASE + "firebase-functions.js")
     ]).then(function(mods){
-      var app = mods[0], fs = mods[1], au = mods[2];
+      var app = mods[0], fs = mods[1], au = mods[2], fn = mods[3];
       sdkAuth = au;
 
       var instancia = app.initializeApp(CONFIG);
       var firestore = fs.getFirestore(instancia);
+      var funcoes = fn.getFunctions(instancia);
+      chamarEntrarPorNick = fn.httpsCallable(funcoes, "entrarPorNick");
 
       estado.auth = au.getAuth(instancia);
       estado.db = criarDb({

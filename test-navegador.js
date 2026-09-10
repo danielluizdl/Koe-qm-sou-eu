@@ -179,7 +179,7 @@ const DUBLE = `
   await clicar("go-criar-conta");
   t("Criar conta abre s-cadastro", (await telaVisivel()) === "s-cadastro", String(await telaVisivel()));
   t("no cadastro, o campo de e-mail do LOGIN não aparece",
-    (await visivel("login-email")) === false);
+    (await visivel("login-identificador")) === false);
   t("no cadastro, os 5 campos aparecem",
     (await visivel("cad-nome")) && (await visivel("cad-nick")) && (await visivel("cad-email")) &&
     (await visivel("cad-senha")) && (await visivel("cad-senha2")));
@@ -187,7 +187,7 @@ const DUBLE = `
   await clicar("ir-login");
   t("'Já tenho conta' abre s-login", (await telaVisivel()) === "s-login", String(await telaVisivel()));
   t("no login, só e-mail e senha",
-    (await visivel("login-email")) && (await visivel("login-senha")));
+    (await visivel("login-identificador")) && (await visivel("login-senha")));
   t("no login, nenhum campo de cadastro aparece",
     (await visivel("cad-nome")) === false && (await visivel("cad-nick")) === false &&
     (await visivel("cad-senha2")) === false);
@@ -284,8 +284,8 @@ const DUBLE = `
   await clicar("home-avatar");
   t("avatar abre o perfil", (await telaVisivel()) === "s-conta", String(await telaVisivel()));
   t("VISÍVEL: a caixa do ID", (await visivel("conta-idbox")) === true);
-  t("o ID vem com # e 6 caracteres",
-    /^#[A-Z0-9]{6}$/.test(await texto("conta-id")), await texto("conta-id"));
+  t("o ID vem com # e 5 números",
+    /^#[0-9]{5}$/.test(await texto("conta-id")), await texto("conta-id"));
   t("VISÍVEL: convidar alguém", (await visivel("conta-convidar")) === true);
   await page.evaluate(() => document.querySelector('#s-conta [data-back]').click());
   await new Promise(r => setTimeout(r, 150));

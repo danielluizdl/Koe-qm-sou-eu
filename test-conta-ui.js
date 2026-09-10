@@ -124,6 +124,7 @@ function makeDb(){
    salas/{sala}/hist/registro e rank-server.js#processarPartida (o mesmo
    código da Cloud Function) deriva partidas + agregado. */
 const RANK = require("./rank-server.js");
+const { chaveNick } = require("./contas.js");
 async function jogarPartida(db, pid, sala, ordem){
   const resultados = ordem.map((o, i) => ({ id: o.id, nick: o.id, carta: "c" + i, posicao: i + 1 }));
   const ref = db.doc("salas/" + sala + "/hist/registro");
@@ -168,6 +169,33 @@ function makeFirebase(db){
       if (!c || c.senha !== String(senha)) return Promise.reject(authErr("auth/invalid-credential"));
       F._entrar({ uid: c.uid, email });
       return Promise.resolve({ uid: c.uid, email });
+    },
+
+    /* Simula a Cloud Function entrarPorNick: resolve nick -> uid via o
+       MESMO db que contas.js grava (nicks/{chave}), depois confere a
+       senha contra o registro interno deste mock — o suficiente pra
+       testar a FIAÇÃO do cliente (campo único, detecção de "@", tela
+       de erro). A prova de que o servidor de verdade faz isso direito
+       é test-login-server-emulador.js, contra os emuladores reais. */
+    entrarPorNick(nick, senha){
+      const chave = chaveNick(nick);
+      return db.doc("nicks/" + chave).get().then(function(s){
+        if (!s.exists) return Promise.reject(authErr("auth/invalid-credential"));
+        const uid = s.data().uid;
+        for (const [email, c] of contas){
+          if (c.uid === uid){
+            if (c.senha !== String(senha)) return Promise.reject(authErr("auth/invalid-credential"));
+            F._entrar({ uid, email });
+            return { uid, email };
+          }
+        }
+        return Promise.reject(authErr("auth/invalid-credential"));
+      });
+    },
+
+    entrarComIdentificador(ident, senha){
+      const t = String(ident || "").trim();
+      return t.indexOf("@") >= 0 ? F.entrar(t, senha) : F.entrarPorNick(t, senha);
     },
 
     esqueciSenha(email){ F._resets.push(String(email||"").toLowerCase()); return Promise.resolve(); },
@@ -237,7 +265,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   ok(tela() === "s-cadastro", "'Criar conta' abre a tela de cadastro, foi pra " + tela());
   click("go-entrar");
   ok(tela() === "s-login", "'Entrar' abre a tela de login, foi pra " + tela());
-  ok(g("cad-nome") !== g("login-email"), "as duas telas são documentos separados");
+  ok(g("cad-nome") !== g("login-identificador"), "as duas telas são documentos separados");
 
   /* ===== 1b. e as portas continuam trancadas por dentro ===== */
   click("amb-criar");
@@ -378,7 +406,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
 
   /* ===== 10. entrar com conta existente ===== */
   click("ir-login");
-  preencher("login-email", "ana@exemplo.com");
+  preencher("login-identificador", "ana@exemplo.com");
   preencher("login-senha", "999999");
   click("login-ok");
   await settle();
@@ -391,6 +419,43 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   ok(A.ui.CONTA.perfil && A.ui.CONTA.perfil.nick === "an", "senha certa entra e traz o perfil");
   ok(tela() === "s-conta", "e vai pra tela de perfil, foi pra " + tela());
   ok(g("conta-perfil-nome").textContent === "Ana Souza", "perfil mostra o nome completo");
+
+  /* ===== 10b. entrar pelo NICK, não pelo e-mail (C1) ===== */
+  click("conta-sair");
+  await settle();
+  click("go-entrar");
+  preencher("login-identificador", "an");      // o nick da ana, sem @
+  preencher("login-senha", "000000");
+  click("login-ok");
+  await settle();
+  ok(g("login-err").textContent.indexOf("não conferem") >= 0,
+     "nick com senha errada dá o MESMO aviso genérico, veio: " + g("login-err").textContent);
+  ok(A.ui.CONTA.ident === null, "e continua deslogado");
+
+  preencher("login-senha", "123456");
+  click("login-ok");
+  await settle();
+  ok(A.ui.CONTA.ident !== null, "nick + senha certos entra");
+  ok(A.ui.CONTA.perfil && A.ui.CONTA.perfil.nick === "an",
+     "e é a MESMA conta que o login por e-mail levaria");
+  ok(tela() === "s-conta", "vai pro perfil, foi pra " + tela());
+
+  click("conta-sair");
+  await settle();
+  click("go-entrar");
+  preencher("login-identificador", "nickquenaoexiste");
+  preencher("login-senha", "123456");
+  click("login-ok");
+  await settle();
+  ok(g("login-err").textContent.indexOf("não conferem") >= 0,
+     "nick inexistente dá o MESMO aviso que senha errada (não vaza se existe)");
+
+  /* login de novo, pra seguir a próxima seção com a conta ativa */
+  preencher("login-identificador", "an");
+  preencher("login-senha", "123456");
+  click("login-ok");
+  await settle();
+  ok(A.ui.CONTA.perfil && A.ui.CONTA.perfil.nick === "an", "logada de volta pra continuar o teste");
 
   /* ===== 11. com conta, as portas abrem ===== */
   ok(g("home-capa").hidden === true, "com conta, a capa some da home");
@@ -412,14 +477,14 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   click("conta-sair");
   await settle();
   click("go-entrar");
-  preencher("login-email", "ana@exemplo.com");
+  preencher("login-identificador", "ana@exemplo.com");
   click("login-esqueci");
   await settle();
   ok(F._resets.length === 1 && F._resets[0] === "ana@exemplo.com",
      "esqueci a senha dispara o reset");
 
   /* ===== 13. amigos e ranking ===== */
-  preencher("login-email", "ana@exemplo.com");
+  preencher("login-identificador", "ana@exemplo.com");
   preencher("login-senha", "123456");
   click("login-ok");
   await settle();

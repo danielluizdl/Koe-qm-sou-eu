@@ -777,9 +777,9 @@
         <h2>Entrar</h2>
       </div>
       <div class="campo">
-        <label for="login-email">E-mail</label>
-        <input id="login-email" class="field" type="email" inputmode="email"
-               autocomplete="email" autocorrect="off" spellcheck="false" autocapitalize="none">
+        <label for="login-identificador">Nick ou e-mail</label>
+        <input id="login-identificador" class="field" type="text"
+               autocomplete="username" autocorrect="off" spellcheck="false" autocapitalize="none">
       </div>
       <div class="campo">
         <label for="login-senha">Senha</label>
@@ -2661,12 +2661,14 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       var QF = window.QSE_FIREBASE;
       if (!QF) return;
       txt("login-err", "");
-      var em = $("login-email").value, se = $("login-senha").value;
-      var e1 = erroEmail(em);
+      var ident = ($("login-identificador").value || "").replace(/^\s+|\s+$/g, "");
+      var se = $("login-senha").value;
+      var ehEmail = ident.indexOf("@") >= 0;
+      var e1 = ehEmail ? erroEmail(ident) : erroNick(ident);
       if (e1){ txt("login-err", e1); return; }
       if (!se){ txt("login-err", "Digite sua senha."); return; }
       bLogin.disabled = true; bLogin.textContent = "Entrando…";
-      QF.entrar(em, se).then(function(){
+      QF.entrarComIdentificador(ident, se).then(function(){
         bLogin.disabled = false; bLogin.textContent = "Entrar";
       }, function(e){
         bLogin.disabled = false; bLogin.textContent = "Entrar";
@@ -2678,9 +2680,14 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     if (esqueci) esqueci.addEventListener("click", function(){
       var QF = window.QSE_FIREBASE;
       if (!QF) return;
-      var em = $("login-email").value;
-      if (erroEmail(em)){ txt("login-err", "Escreva seu e-mail acima primeiro."); return; }
-      QF.esqueciSenha(em).then(function(){
+      /* a redefinição de senha do Firebase só existe por e-mail — se a
+         pessoa digitou o nick aqui, não tem como mandar link nenhum */
+      var ident = ($("login-identificador").value || "").replace(/^\s+|\s+$/g, "");
+      if (erroEmail(ident)){
+        txt("login-err", "Pra recuperar a senha, escreva seu e-mail (não o nick) acima.");
+        return;
+      }
+      QF.esqueciSenha(ident).then(function(){
         toast("Mandamos um link pra você trocar a senha.");
       }, function(e){ txt("login-err", motivoAuth(e)); });
     });
