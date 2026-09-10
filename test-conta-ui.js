@@ -14,7 +14,8 @@ const html = fs.readFileSync(path.join(__dirname, "quem-sou-eu-temas.html"), "ut
 const scriptSrc = html.slice(html.indexOf("<script>") + 8, html.lastIndexOf("</" + "script>"));
 const compiled = new vm.Script(
   scriptSrc.slice(0, scriptSrc.lastIndexOf("})();")) +
-  "globalThis.__ui={telaVisivel:telaVisivel,get CONTA(){return CONTA;},pintarConta:pintarConta};})();",
+  "globalThis.__ui={telaVisivel:telaVisivel,get CONTA(){return CONTA;},pintarConta:pintarConta," +
+  "get SC(){return SC;},CriarSalaCliente:CriarSalaCliente};})();",
   { filename: "app" });
 
 /* ---------- DOM mínimo com eventos ---------- */
@@ -579,6 +580,42 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
        "o agregado somou UMA partida, foi de " + antes.partidas + " pra " + perf.partidas);
     ok(perf.saldo === antes.saldo + 1,
        "vencer de 1 soma +1 ao saldo, foi de " + antes.saldo + " pra " + perf.saldo);
+  }
+
+  /* ===== 17. apelido travado ao entrar numa sala NOVA por código (C6) =====
+     Bug real: quem tinha conta e entrava numa sala nunca visitada nesse
+     aparelho caía na tela de apelido livre — podia digitar qualquer
+     coisa, mesmo já tendo nick fixo no cadastro. `criarSalaOnline` já
+     pulava essa tela usando CONTA.perfil.nick direto; `entrarComCodigo`
+     não. */
+  {
+    /* host num aparelho separado: mesmo db, localStorage PRÓPRIO — se
+       reusasse o de A, A "reconheceria" o próprio código salvo do host
+       como se já tivesse entrado, mascarando o bug que este teste
+       existe pra pegar. */
+    const B = makeApp(DB, makeFirebase(DB));
+    const host = B.ui.CriarSalaCliente(DB, null);
+    await host.criar("", "hostremoto", 1, 0);
+    const codigoNovo = host.codigo;
+
+    click("amb-entrar");
+    await settle();
+    ok(tela() === "s-entrar", "amb-entrar abre a tela de código, foi pra " + tela());
+    preencher("entrar-input", codigoNovo);
+    click("entrar-ok");
+    await settle();
+
+    /* este db simulado não dispara onSnapshot (só resolve get/set), então
+       a navegação pro s-lobby — que depende do listener pra repintar —
+       não acontece aqui; essa parte já tem prova real em test-salas-ui.js.
+       O que importa pro C6 é o que resolverNickNaSala decide ANTES disso:
+       nunca mostrar a tela de apelido livre pra quem já tem conta. */
+    ok(tela() !== "s-nick",
+       "sala nova + conta logada: não pede apelido livre, foi pra " + tela());
+    ok(A.ui.SC && A.ui.SC.meuNick === "an",
+       "usou o nick da CONTA sem perguntar, veio: " + (A.ui.SC && A.ui.SC.meuNick));
+    ok(A.ui.SC && A.ui.SC.meuId === A.ui.CONTA.ident.uid,
+       "o id do jogador é o uid da conta, não um convidado novo");
   }
 
   console.log(fails ? "\n" + fails + " falha(s)" : "\ntelas de conta passaram");

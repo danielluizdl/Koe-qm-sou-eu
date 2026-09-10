@@ -3212,7 +3212,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
         $("entrar-err").textContent = "Não achei a sala " + codigo + ". Confira com quem criou.";
         SC = null; return;
       }
-      if (res.precisaNick){ irParaNick("identificar", res.membros); return; }
+      if (res.precisaNick){ resolverNickNaSala(res.membros); return; }
     }, function(){
       $("entrar-ok").disabled = false;
       $("entrar-err").textContent = "Deu ruim ao abrir a sala. Tente de novo.";
@@ -3224,8 +3224,27 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     novaSalaCliente();
     SC.abrir(codigo).then(function(res){
       if (res.naoExiste){ toast("A sala " + codigo + " não existe mais."); esquecerSala(codigo); SC = null; pintarHome(); return; }
-      if (res.precisaNick){ irParaNick("identificar", res.membros); return; }
+      if (res.precisaNick){ resolverNickNaSala(res.membros); return; }
     }, function(){ toast("Não deu para abrir a sala."); SC = null; });
+  }
+
+  /* Quem tem conta já escolheu o apelido no cadastro — não pode trocar
+     depois disso (mesmo motivo do abrirCriarOnline: evita a mesma
+     pessoa aparecer com nomes diferentes pros amigos, e sem essa trava
+     dava pra reabrir a tela de apelido livre mesmo logado, o que é o
+     bug que essa função existe pra fechar). Só pede apelido de verdade
+     pra quem está sem conta (Artifact, offline). */
+  function resolverNickNaSala(membros){
+    if (CONTA.perfil && CONTA.perfil.nick){
+      SC.entrarNovo(CONTA.perfil.nick).then(noop, function(e){
+        toast((e && e.motivo === "nick-repetido")
+          ? "Já tem alguém como \"" + CONTA.perfil.nick + "\" nessa sala."
+          : "Não deu para entrar na sala.");
+        SC = null; show("s-home"); pintarHome();
+      });
+      return;
+    }
+    irParaNick("identificar", membros);
   }
 
   function sairDaSala(){
