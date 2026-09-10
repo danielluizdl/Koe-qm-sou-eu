@@ -389,19 +389,23 @@ async function cenarioIdentidade() {
   const ana = makeDevice(DB, "Ana", { uid: "auth-ana" });
   const bia = makeDevice(DB, "Bia", { uid: "auth-bia" });
 
-  await ana.client.criar("MESA1", "Ana", T0Mask(), 0);
+  await ana.client.criar("MESA1", "Ana", T0Mask(), 0, "  Rolê da firma  ");
   await settle();
   ok(ana.client.meuId === "auth-ana", "criar sala usa o auth.uid como id do jogador");
   ok(DB._dump()["salas/MESA1/jogadores/auth-ana"] !== undefined,
      "o documento do jogador é indexado pelo uid");
   ok(DB._dump()["salas/MESA1"].hostId === "auth-ana",
      "hostId é o uid — é o que a regra compara");
+  ok(DB._dump()["salas/MESA1"].nome === "Rolê da firma",
+     "nome opcional da sala é gravado (trim), veio: " + JSON.stringify(DB._dump()["salas/MESA1"].nome));
+  ok(ana.client.vm().nomeSala === "Rolê da firma", "vm expõe o nome da sala pro host");
 
   await bia.client.abrir("MESA1");
   await bia.client.entrarNovo("Bia");
   await settle();
   ok(bia.client.meuId === "auth-bia", "entrar como novo também usa o uid");
   ok(ana.client.vm().membros.length === 2, "roster com 2");
+  ok(bia.client.vm().nomeSala === "Rolê da firma", "quem entra também vê o nome da sala");
 
   /* O ganho que a migração traz de graça: trocar de celular deixa de
      depender do localStorage daquele aparelho. */

@@ -409,8 +409,8 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   click("login-ok");
   await settle();
   ok(A.ui.CONTA.perfil && A.ui.CONTA.perfil.nick === "an", "senha certa entra e traz o perfil");
-  ok(tela() === "s-conta", "e vai pra tela de perfil, foi pra " + tela());
-  ok(g("conta-perfil-nome").textContent === "Ana Souza", "perfil mostra o nome completo");
+  ok(tela() === "s-home", "entrar cai no painel da home, não no perfil, foi pra " + tela());
+  ok(g("conta-perfil-nome").textContent === "Ana Souza", "o perfil foi pintado mesmo assim (fica a um toque no avatar)");
 
   /* ===== 10b. entrar pelo NICK, não pelo e-mail (C1) ===== */
   click("conta-sair");
@@ -430,7 +430,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   ok(A.ui.CONTA.ident !== null, "nick + senha certos entra");
   ok(A.ui.CONTA.perfil && A.ui.CONTA.perfil.nick === "an",
      "e é a MESMA conta que o login por e-mail levaria");
-  ok(tela() === "s-conta", "vai pro perfil, foi pra " + tela());
+  ok(tela() === "s-home", "login por nick também cai no painel da home, foi pra " + tela());
 
   click("conta-sair");
   await settle();

@@ -431,7 +431,7 @@
   <section class="screen" id="s-sala-detalhe">
     <div class="topbar"><button class="back" data-back="s-salas">← Voltar</button></div>
     <div class="stack" style="gap:6px">
-      <p class="eyebrow">Sala</p>
+      <p class="eyebrow" id="det-eyebrow">Sala</p>
       <h2 id="det-codigo"></h2>
       <p class="note" id="det-resumo"></p>
     </div>
@@ -467,6 +467,13 @@
 
   <section class="screen" id="s-create">
     <div class="topbar"><button class="back" id="create-back" data-back="s-home">← Voltar</button></div>
+
+    <div class="stack" id="create-nome-sala" hidden style="gap:6px">
+      <h2>Nome da sala <span style="color:var(--ink-3);font-family:var(--f-ui);font-size:.8rem;font-weight:600">— opcional</span></h2>
+      <input id="create-nome-input" class="field" maxlength="30" inputmode="text"
+             autocomplete="off" autocorrect="off" spellcheck="false"
+             placeholder="ex: churrasco de domingo" aria-label="Nome da sala (opcional)">
+    </div>
 
     <div class="seg" id="create-modo" hidden style="grid-template-columns:1fr 1fr">
       <button type="button" id="modo-mesa" aria-pressed="true"><b>Revelação única</b><span>com nomes, pra festa</span></button>
@@ -618,10 +625,12 @@
   <section class="screen" id="s-lobby">
     <div class="topbar">
       <button class="back" id="lobby-sair">← Sair</button>
-      <span class="tag" id="lobby-code" style="user-select:all"></span>
+    </div>
+    <div class="code-hero" style="margin-bottom:14px">
+      <p class="eyebrow" id="lobby-nome">Sala</p>
+      <div class="code-big" id="lobby-code"></div>
     </div>
     <div class="stack" style="gap:6px">
-      <p class="eyebrow">Sala</p>
       <h2 id="lobby-title">Quem está na mesa</h2>
       <p class="note" id="lobby-sub"></p>
     </div>
@@ -1921,9 +1930,10 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
     /* ---- entrar / criar ---- */
 
-    C.criar = function(codigo, nick, mask, nivel){
+    C.criar = function(codigo, nick, mask, nivel, nome){
       C.meuId = novoId();
       C.meuNick = normNick(nick);
+      C.nomeSala = String(nome == null ? "" : nome).replace(/^\s+|\s+$/g, "").slice(0, 30);
       var aleatorio = !codigo;
       var tentativas = 0;
       function tentar(){
@@ -1949,6 +1959,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       var t = agora();
       return refSala().set({
         codigo: C.codigo, criadaEm: t, ultimoUsoEm: t, hostId: C.meuId,
+        nome: C.nomeSala || "",
         mask: mask, nivel: nivel, fase: "lobby", participantes: null,
         seed: null, partidaCriadaEm: null, partidaId: null, fimEm: null,
         iniciadaEm: null
@@ -2271,7 +2282,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
         mask: (C.sala && !apagada && C.sala.mask != null) ? C.sala.mask : draft.mask,
         nivel: (C.sala && !apagada && C.sala.nivel != null) ? C.sala.nivel : draft.nivel,
         iniciadaEm: (C.sala && !apagada && C.sala.iniciadaEm) || null,
-        pid: (C.sala && !apagada && C.sala.partidaId) || null
+        pid: (C.sala && !apagada && C.sala.partidaId) || null,
+        nomeSala: (C.sala && !apagada && C.sala.nome) || C.nomeSala || ""
       };
       var m = membrosOrdenados();
       var pa = participantesAtuais(), pset = {};
@@ -2575,7 +2587,13 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
        home. Trocar do meio de uma partida seria hostil. */
     var atual = telaVisivel();
     var telasConta = { "s-login":1, "s-cadastro":1, "s-conta":1 };
-    if (telasConta[atual] && atual !== alvo) show(alvo);
+    if (telasConta[atual] && atual !== alvo){
+      /* Entrar ou cadastrar cai no PAINEL da home — a primeira tela
+         depois de entrar é pra jogar. O perfil fica a um toque, no
+         avatar. */
+      if (alvo === "s-conta"){ show("s-home"); pintarHome(); }
+      else show(alvo);
+    }
   }
 
   function pintarPerfil(){
@@ -3007,8 +3025,9 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
           row.className = "row"; row.type = "button";
           row.innerHTML = '<span class="grow"><b></b><span class="sub"></span></span>' +
                           '<span class="pos" style="font-size:1.1rem">›</span>';
-          row.querySelector("b").textContent = "sala " + s.codigo;
+          row.querySelector("b").textContent = s.nome || ("sala " + s.codigo);
           row.querySelectorAll("span")[1].textContent =
+            (s.nome ? "sala " + s.codigo + " · " : "") +
             (s.partidas || 0) + ((s.partidas === 1) ? " partida" : " partidas") +
             " · " + quandoFoi(s.ultimaEm);
           row.addEventListener("click", function(){ abrirDetalheSala(s); });
@@ -3034,7 +3053,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   function abrirDetalheSala(s){
     salaDetalhe = s;
     show("s-sala-detalhe");
-    $("det-codigo").textContent = s.codigo;
+    $("det-eyebrow").textContent = s.nome ? "Sala " + s.codigo : "Sala";
+    $("det-codigo").textContent = s.nome || s.codigo;
     $("det-resumo").textContent =
       (s.partidas || 0) + ((s.partidas === 1) ? " partida" : " partidas") +
       " · última " + quandoFoi(s.ultimaEm);
@@ -3111,7 +3131,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
      com quem virar amigo. */
   function aoEntrarNaSala(codigo, nick){
     if (!contaCompleta()) return;
-    CONTA.api.marcarSala(CONTA.ident.uid, codigo, { nick: nick })["catch"](noop);
+    var nome = SC && SC.sala && SC.sala.nome;
+    CONTA.api.marcarSala(CONTA.ident.uid, codigo, { nick: nick, nome: nome })["catch"](noop);
   }
 
   function aoFimDaPartida(info){
@@ -3124,7 +3145,11 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
        Aqui só marcamos a sala e viramos amigo de quem jogou junto —
        amizade tem que ser do cliente (a regra só deixa criar a aresta
        que aponta pra você). */
-    CONTA.api.marcarSala(uid, info.sala, { partida: true, nick: CONTA.perfil && CONTA.perfil.nick })
+    CONTA.api.marcarSala(uid, info.sala, {
+      partida: true,
+      nick: CONTA.perfil && CONTA.perfil.nick,
+      nome: SC && SC.sala && SC.sala.nome
+    })
     .then(function(){
       return CONTA.api.amizadeAutomatica(uid, info.outros);
     }).then(function(novos){
@@ -3250,6 +3275,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   function escondeMesaNoCreate(){
     $("create-modo").hidden = true;
     $("create-nomes").hidden = true;
+    $("create-nome-sala").hidden = true;
     $("create-temas").hidden = true;
     $("create-baralhos").hidden = false;
   }
@@ -3265,8 +3291,15 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     criarModo = "online";
     escondeMesaNoCreate();
     $("create-pessoas").hidden = true;
+    $("create-nome-sala").hidden = false;
+    $("create-nome-input").value = "";
     $("do-create").textContent = "Criar sala";
-    $("create-back").setAttribute("data-back", "s-nick");
+    /* logado veio da home direto (criarComNick pula a tela de apelido);
+       sem conta, veio da tela de apelido. O voltar tem que respeitar
+       de onde a pessoa veio — senão cai numa tela de apelido livre que
+       ela nunca viu (e o apelido é imutável pra quem tem conta). */
+    $("create-back").setAttribute("data-back",
+      (CONTA.perfil && CONTA.perfil.nick) ? "s-home" : "s-nick");
     updateTally();
   }
   function modoReconfig(){
@@ -3345,8 +3378,9 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     if (draft.mask === 0) return;
     $("do-create").disabled = true;
     var nick = novoNick || ultimoNick();
+    var nome = ($("create-nome-input").value || "").replace(/^\s+|\s+$/g, "").slice(0, 30);
     novaSalaCliente();
-    SC.criar("", nick, draft.mask, draft.nivel).then(function(){
+    SC.criar("", nick, draft.mask, draft.nivel, nome).then(function(){
       $("do-create").disabled = false;
     }, function(){
       $("do-create").disabled = false;
@@ -3438,7 +3472,9 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   function compartilharSala(){
     if (!SC) return;
     var link = location.href.split("#")[0] + "#" + SC.codigo;
-    var texto = "Bora jogar Quem Sou Eu!\nAbra: " + link + "\nSala: " + SC.codigo;
+    var nome = SC.vm().nomeSala;
+    var texto = "Bora jogar Quem Sou Eu!" + (nome ? "\nSala: " + nome : "") +
+                "\nAbra: " + link + "\nCódigo: " + SC.codigo;
     if (navigator.share){ navigator.share({ title: "Quem Sou Eu", text: texto })["catch"](noop); }
     else { copy(texto, "Convite copiado"); }
   }
@@ -3575,7 +3611,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   function pintarLobby(v, entrando){
     var host = v.souHost;
-    $("lobby-code").textContent = "sala " + v.codigo;
+    $("lobby-code").textContent = v.codigo;
+    $("lobby-nome").textContent = v.nomeSala || "Sala";
     $("lobby-sub").textContent = host
       ? "Toque nos nomes para marcar quem joga. " + v.numParticipantes + " na partida."
       : "Boa, " + v.meuNick + ". Esperando o host começar.";
@@ -4285,6 +4322,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     $("create-temas").hidden = false;
     $("create-pessoas").hidden = false;
     $("create-nomes").hidden = false;
+    $("create-nome-sala").hidden = true;
     $("create-back").setAttribute("data-back", "s-home");
     $("do-create").textContent = "Criar convite";
     pintarTemas();

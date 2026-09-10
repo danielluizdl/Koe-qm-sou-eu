@@ -210,12 +210,17 @@ async function main() {
   g("nick-input").value = "Ana";
   click("nick-ok");
   ok(tela() === "s-create", "nick-ok leva pra s-create");
+  ok(g("create-nome-sala").hidden === false, "campo opcional de nome da sala aparece no modo online");
+  g("create-nome-input").value = "Churrasco de Domingo";   // opcional
   click("do-create");                          // código sempre sorteado, sem campo pra digitar
   await settle();
   ok(tela() === "s-lobby", "do-create abre o lobby, foi pra " + tela());
   const SC = A.ui.SC;
   ok(SC && /^[0-9]{4}$/.test(SC.codigo || ""), "código de sala com 4 dígitos, só número, veio: " + (SC && SC.codigo));
   const codigo = SC.codigo;
+  ok(g("lobby-code").textContent === codigo, "o código aparece grande e sozinho no lobby (sem 'sala '), veio: " + g("lobby-code").textContent);
+  ok(g("lobby-nome").textContent === "Churrasco de Domingo", "o nome da sala aparece de destaque no lobby, veio: " + g("lobby-nome").textContent);
+  ok(A.ui.SC.vm().nomeSala === "Churrasco de Domingo", "vm expõe o nome da sala");
 
   // 2. B e C entram (cliente direto, sandbox próprio p/ localStorage isolado)
   const B = makeApp(DB, false), C = makeApp(DB, false);

@@ -492,17 +492,19 @@ t("formatoIdAtual recusa formato antigo (6 alfanumerico)", formatoIdAtual("K7M2X
 
   t("começa sem salas", (await A.minhasSalas("ana")).length === 0);
 
-  await A.marcarSala("ana", "FESTA", { nick: "ana" });
+  await A.marcarSala("ana", "FESTA", { nick: "ana", nome: "Rolê da firma" });
   let salas = await A.minhasSalas("ana");
   t("entrar numa sala registra", salas.length === 1 && salas[0].codigo === "FESTA",
     JSON.stringify(salas));
   t("sala nova começa com 0 partidas", salas[0].partidas === 0);
+  t("guarda o nome da sala pra Minhas Salas", salas[0].nome === "Rolê da firma", JSON.stringify(salas[0]));
 
-  await A.marcarSala("ana", "FESTA", { partida: true });
+  await A.marcarSala("ana", "FESTA", { partida: true });   // sem repassar o nome
   await A.marcarSala("ana", "FESTA", { partida: true });
   salas = await A.minhasSalas("ana");
   t("não duplica a sala", salas.length === 1, JSON.stringify(salas.map(s => s.codigo)));
   t("conta as partidas", salas[0].partidas === 2, String(salas[0].partidas));
+  t("nome persiste quando marca de novo sem repassar", salas[0].nome === "Rolê da firma", JSON.stringify(salas[0]));
 
   await A.marcarSala("ana", "PRAIA", { nick: "ana", partida: true, em: Date.now() + 1000 });
   salas = await A.minhasSalas("ana");

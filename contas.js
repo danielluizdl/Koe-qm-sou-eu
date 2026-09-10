@@ -556,14 +556,16 @@
           return ref.update({
             ultimaEm: t,
             partidas: (d.partidas || 0) + ((extra && extra.partida) ? 1 : 0),
-            nick: (extra && extra.nick) || d.nick || ""
+            nick: (extra && extra.nick) || d.nick || "",
+            nome: (extra && extra.nome) || d.nome || ""
           });
         }
         return ref.set({
           codigo: codigo,
           entrouEm: t, ultimaEm: t,
           partidas: (extra && extra.partida) ? 1 : 0,
-          nick: (extra && extra.nick) || ""
+          nick: (extra && extra.nick) || "",
+          nome: (extra && extra.nome) || ""
         });
       }).then(function(){ return codigo; }, function(){ return null; });
     };
