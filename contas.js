@@ -88,26 +88,34 @@
     return boas >= 2;
   }
 
-  /* Mesmo alfabeto dos códigos do jogo: sem 0, 1, I e O, porque quem lê
-     um ID em voz alta no grupo confunde zero com O e um com I. */
-  var A32 = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-  var TAM_ID = 6;
+  /* ID de jogador: só número, crescente, 5 dígitos com zero à esquerda
+     (#00001, #00002...). Trocado do formato antigo (6 chars do alfabeto
+     A32, aleatório) porque é mais fácil de ditar e de digitar de cabeça.
 
-  function sortearId(){
-    var s = "", i;
-    for (i = 0; i < TAM_ID; i++) s += A32.charAt(Math.floor(Math.random() * A32.length));
+     Efeito colateral aceito conscientemente: um ID sequencial exposto
+     publicamente revela quantos cadastros existem (#00042 = já teve
+     pelo menos 42 contas). Troca aceita por simplicidade num jogo de
+     festa entre amigos — não um produto de massa. */
+  var TAM_ID = 5;
+
+  function formatarId(n){
+    var s = String(n);
+    while (s.length < TAM_ID) s = "0" + s;
     return s;
   }
 
-  /* Aceita com ou sem "#", em qualquer caixa. Devolve "" se não for um
-     ID possível — assim quem chama distingue "não é ID" de "é ID que não
-     existe". */
+  /* Formato atual: exatamente 5 dígitos. Um ID do formato antigo (6
+     chars alfanuméricos) não bate aqui — é assim que garantirId()
+     sabe quem ainda precisa ser migrado. */
+  function formatoIdAtual(id){
+    return /^[0-9]{5}$/.test(String(id == null ? "" : id));
+  }
+
+  /* Aceita com ou sem "#". Devolve "" se não for um ID possível — assim
+     quem chama distingue "não é ID" de "é ID que não existe". */
   function normId(s){
-    var t = String(s == null ? "" : s).replace(/^\s+|\s+$/g, "").replace(/^#/, "").toUpperCase();
-    if (t.length !== TAM_ID) return "";
-    var i;
-    for (i = 0; i < t.length; i++) if (A32.indexOf(t.charAt(i)) < 0) return "";
-    return t;
+    var t = String(s == null ? "" : s).replace(/^\s+|\s+$/g, "").replace(/^#/, "");
+    return formatoIdAtual(t) ? t : "";
   }
   function idValido(s){ return normId(s) !== ""; }
 
@@ -141,24 +149,57 @@
       });
     }
 
-    /* Reserva um ID livre. Mesmo padrão do apelido: acquire, confere,
-       grava. Sorteia de novo em colisão — com 32^6 combinações elas são
-       raras, mas raras não é nunca. */
-    function reservarId(uid, tentativas){
+    function refContadorId(){ return db.doc("contadores/id"); }
+
+    var TENTATIVAS_ID = 50;
+
+    /* Trava o CANDIDATO (ids/{numero}), não um contador central — é o
+       que faz cadastros sequenciais quase nunca disputarem o mesmo
+       lock, exatamente como o sorteio aleatório antigo já fazia (cada
+       um travava o SEU valor sorteado, não um recurso compartilhado).
+
+       Uma primeira versão disto usava um único doc "contadores/id"
+       como mutex central: TODO cadastro, mesmo sem nenhuma contenção de
+       verdade, tinha que esperar o lock do cadastro anterior EXPIRAR
+       por TTL — porque o lock não tem "liberar mais cedo", só expira
+       sozinho. Isso transformava qualquer dois cadastros próximos no
+       tempo (o caso comum, não o raro) numa fila de vários segundos.
+       Medido rodando o teste de verdade: 369ms viraram 35 segundos.
+
+       Aqui, cada candidato é um lock DIFERENTE. Só colide quando duas
+       pessoas miram o MESMO número ao mesmo tempo — nesse caso, uma
+       vence e a outra anda pro próximo candidato NA HORA, sem esperar
+       TTL nenhum (não precisa: o candidato seguinte está livre). */
+    function tentarReservarId(uid, candidato, tentativas){
       tentativas = tentativas || 0;
-      var id = sortearId();
-      return refId(id).acquire({ holder: uid, ttlMs: 8000 }).then(function(res){
-        if (!res || !res.acquired){
-          if (tentativas < 8) return reservarId(uid, tentativas + 1);
-          throw erro("id_indisponivel", "não consegui gerar um ID");
-        }
+      if (tentativas >= TENTATIVAS_ID)
+        throw erro("id_indisponivel", "não consegui reservar um ID, tenta de novo");
+      var id = formatarId(candidato);
+      return refId(id).acquire({ holder: uid, ttlMs: 2500 }).then(function(res){
+        if (!res || !res.acquired)
+          return tentarReservarId(uid, candidato + 1, tentativas + 1);
         return refId(id).get().then(function(s){
-          if (s.exists && s.data().uid !== uid){
-            if (tentativas < 8) return reservarId(uid, tentativas + 1);
-            throw erro("id_indisponivel", "não consegui gerar um ID");
-          }
-          return refId(id).set({ id: id, uid: uid, em: agora() }).then(function(){ return id; });
+          if (s.exists && s.data().uid !== uid)
+            return tentarReservarId(uid, candidato + 1, tentativas + 1);
+          return refId(id).set({ id: id, uid: uid, em: agora() })
+            .then(function(){ return { id: id, n: candidato }; });
         });
+      });
+    }
+
+    /* O contador é só um PALPITE de onde começar a procurar — nunca um
+       mutex. Pode ficar levemente desatualizado se dois sucessos quase
+       simultâneos "pisarem" na atualização um do outro; inofensivo, o
+       próximo cadastro só anda mais um pouco até achar um número livre
+       de verdade. A atualização do palpite não trava nada — se falhar,
+       o próximo cadastro simplesmente começa a busca de onde já estava. */
+    function reservarId(uid){
+      return refContadorId().get().then(function(s){
+        var palpite = (s.exists && s.data().n) || 0;
+        return tentarReservarId(uid, palpite + 1);
+      }).then(function(r){
+        return refContadorId().set({ n: r.n, atualizadoEm: agora() }).then(
+          function(){ return r.id; }, function(){ return r.id; });
       });
     }
 
@@ -210,17 +251,26 @@
       });
     };
 
-    /* Contas criadas antes do ID existir ganham um na primeira leitura do
-       próprio perfil, sem pedir nada a ninguém. Só o dono consegue (a
-       regra impede escrever no perfil alheio), então isso roda quando a
-       pessoa abre a própria conta. */
+    /* Contas sem ID (nunca tiveram) OU com ID no formato antigo (6 chars
+       alfanuméricos, de antes da troca pro sequencial numérico) ganham
+       um ID novo na primeira leitura do próprio perfil, sem pedir nada
+       a ninguém. Só o dono consegue (a regra impede escrever no perfil
+       alheio), então isso roda quando a pessoa abre a própria conta —
+       é assim que as contas de teste criadas antes desta mudança
+       migram sozinhas pro #00001/#00002, sem senha nem Console. */
     A.garantirId = function(uid){
       return A.perfilPublico(uid).then(function(p){
         if (!p) return null;
-        if (p.id) return p;
+        if (p.id && formatoIdAtual(p.id)) return p;
+        var idAntigo = p.id;
         return reservarId(uid).then(function(id){
-          return refPerfil(uid).update({ id: id, atualizadoEm: agora() })
-            .then(function(){ p.id = id; return p; });
+          return refPerfil(uid).update({ id: id, atualizadoEm: agora() }).then(function(){
+            p.id = id;
+            /* libera o índice antigo; se falhar, só fica um doc órfão
+               inofensivo em ids/ — não é motivo pra travar a migração */
+            if (idAntigo) refId(idAntigo)["delete"]().then(noop, noop);
+            return p;
+          });
         }, function(){ return p; });   // sem ID é melhor que sem perfil
       });
     };
@@ -575,7 +625,7 @@
     CriarContas: CriarContas,
     normNick: normNick, chaveNick: chaveNick,
     nickValido: nickValido, emailValido: emailValido, nomeValido: nomeValido,
-    normId: normId, idValido: idValido, A32: A32
+    normId: normId, idValido: idValido, formatarId: formatarId, formatoIdAtual: formatoIdAtual
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else raiz.CONTAS = API;

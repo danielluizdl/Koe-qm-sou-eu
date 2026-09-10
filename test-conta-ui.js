@@ -438,6 +438,18 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   ok(pedidos.length === 1 && pedidos[0].uid === "uid-1", "pedido chegou pra Bia");
   await outro.aceitar("uid-2", "uid-1");
 
+  /* adicionar por ID (sem #, só os números) — a mesma caixa de busca,
+     sem escolher um modo separado. É a capacidade C3. */
+  const caio = await outro.criar("uid-3", { nick: "caio", nome: "Caio Dias", email: "caio@x.co" });
+  ok(/^[0-9]{5}$/.test(caio.id), "ID do caio tem 5 dígitos, veio: " + caio.id);
+  preencher("amigos-busca", caio.id);   // sem "#", só o número mesmo
+  click("amigos-add");
+  await settle();
+  const pedidosCaio = await outro.pedidosRecebidos("uid-3");
+  ok(pedidosCaio.length === 1 && pedidosCaio[0].uid === "uid-1",
+     "achou e pediu amizade só pelo número do ID, sem #");
+  ok(g("amigos-err").textContent === "", "sem erro ao achar por ID");
+
   const ordem = [{ id:"uid-1", chave:1 }, { id:"uid-2", chave:2 }, { id:"x", chave:3 }];
   await jogarPartida(DB, "p1", "FESTA", ordem);
   click("aba-rank");
@@ -469,8 +481,8 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   await settle();
   ok(tela() === "s-conta", "avatar abre o perfil, foi pra " + tela());
   ok(g("conta-idbox").hidden === false, "a caixa do ID aparece");
-  ok(/^#[A-Z0-9]{6}$/.test(g("conta-id").textContent),
-     "o ID vem formatado com #, veio: " + g("conta-id").textContent);
+  ok(/^#[0-9]{5}$/.test(g("conta-id").textContent),
+     "o ID vem formatado com # e só números, veio: " + g("conta-id").textContent);
 
   /* ===== 16. fim de partida: ponto, sala e amizade ===== */
   {

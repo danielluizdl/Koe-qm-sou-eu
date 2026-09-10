@@ -153,6 +153,23 @@ service cloud.firestore {
     }
 
     /* ---------------------------------------------------------
+       contadores/{chave} — contador atômico do ID de jogador
+       (contadores/id). Qualquer logado pode ler e avançar — é o que
+       um cadastro novo precisa fazer. O que a regra impede é andar
+       PRA TRÁS: só aceita um `n` inteiro, não-negativo, e maior que o
+       valor anterior. Um logado mal-intencionado consegue queimar
+       números à toa (nunca usá-los), mas não forjar nem reaproveitar
+       um ID já emitido — resíduo aceito, mesmo padrão de "quem pode
+       fazer o mínimo de estrago" usado em _locks.
+       --------------------------------------------------------- */
+    match /contadores/{chave} {
+      allow read: if logado();
+      allow create: if logado() && campos().n is int && campos().n >= 0;
+      allow update: if logado() && existia()
+                    && campos().n is int && campos().n > anterior().n;
+    }
+
+    /* ---------------------------------------------------------
        _locks/{chave} — leases do acquire() do adaptador.
        Só ganha o lease quem: assina com o próprio uid, e encontra o
        lease livre, vencido ou já dele. O teto de 10 min no expiresAt

@@ -915,7 +915,7 @@
       <div class="stack" style="gap:10px">
         <input id="amigos-busca" class="field" maxlength="20" autocomplete="off"
                autocorrect="off" spellcheck="false" autocapitalize="none"
-               aria-label="Apelido do amigo" placeholder="apelido de quem você quer adicionar">
+               aria-label="Apelido ou ID do amigo" placeholder="apelido ou número do ID (sem o #)">
         <button class="btn ghost" id="amigos-add">Adicionar</button>
         <p class="err" id="amigos-err" role="status"></p>
       </div>
@@ -2722,14 +2722,15 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     var add = $("amigos-add");
     if (add) add.addEventListener("click", function(){
       if (!contaCompleta()) return;
-      var nick = ($("amigos-busca").value || "").replace(/^\s+|\s+$/g, "");
+      var texto = ($("amigos-busca").value || "").replace(/^\s+|\s+$/g, "");
       txt("amigos-err", "");
-      if (!nick) return;
+      if (!texto) return;
       add.disabled = true;
-      CONTA.api.porNick(nick).then(function(achado){
+      /* aceita apelido ou ID (com ou sem #) — busca() já tenta os dois */
+      CONTA.api.buscar(texto).then(function(achado){
         if (!achado){
           add.disabled = false;
-          txt("amigos-err", "Não achei ninguém com o apelido “" + nick + "”.");
+          txt("amigos-err", "Não achei ninguém com “" + texto + "”.");
           return null;
         }
         return CONTA.api.pedir(CONTA.ident.uid, achado.uid).then(function(r){

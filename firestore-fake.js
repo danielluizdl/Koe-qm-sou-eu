@@ -23,6 +23,7 @@ function makeFirestoreSdk(){
   const listeners = [];
   const queue = [];
   let scheduled = false;
+  let cadeiaTransacoes = Promise.resolve();   // serializa runTransaction de verdade
 
   const clone = x => (x === undefined ? undefined : JSON.parse(JSON.stringify(x)));
   const err = (code, msg) => { const e = new Error(msg || code); e.code = code; return e; };
@@ -160,17 +161,42 @@ function makeFirestoreSdk(){
                 : { tipo: "coll", path: ref.path, rs: ref.rs, next, dead: false }
     ),
 
-    /* Serializada. Basta pro acquire, que é o único uso. */
-    runTransaction: (db, fn) => Promise.resolve().then(() => fn({
-      get: ref => Promise.resolve(snap(ref.path)),
-      set: (ref, dados) => { mutate(() => store.set(ref.path, clone(dados))); }
-    })),
+    /* Serializada DE VERDADE: cada transação só começa a executar
+       depois que a anterior terminou por completo (sucesso ou erro).
+
+       Uma versão anterior disto só agendava fn() via microtask sem
+       encadear nada — com N chamadas concorrentes a runTransaction,
+       TODAS as N leituras (tx.get) aconteciam antes de QUALQUER
+       escrita (tx.set), porque cada fn() é ela mesma uma cadeia de
+       promises que intercala com as das outras no microtask queue.
+       Resultado: N "transações" concorrentes todas liam "livre" e
+       todas concluíam que tinham ganhado o mesmo lock — o Firestore
+       de verdade nunca permitiria isso (controle de concorrência
+       otimista: uma commitaria, as outras dariam retry). Achado
+       testando 5 cadastros simultâneos de propósito: as 5 saíram com
+       o mesmo ID, prova de que a serialização era só aparência.
+
+       A fila abaixo é uma simplificação válida do mesmo contrato
+       observável: já que este db é um processo só, em memória, sem
+       conflito distribuído de verdade, executar uma transação só
+       depois da outra terminar dá a MESMA garantia de isolamento que
+       o retry otimista do Firestore real — só que sem precisar
+       reimplementar detecção de conflito. */
+    runTransaction: (db, fn) => {
+      const resultado = cadeiaTransacoes.then(() => fn({
+        get: ref => Promise.resolve(snap(ref.path)),
+        set: (ref, dados) => { mutate(() => store.set(ref.path, clone(dados))); }
+      }));
+      cadeiaTransacoes = resultado.then(() => {}, () => {});
+      return resultado;
+    },
 
     _store: store,
     _queue: queue,
     _listeners: listeners,
     _resetInterno(){
       store.clear(); listeners.length = 0; queue.length = 0; scheduled = false;
+      cadeiaTransacoes = Promise.resolve();
     }
   };
 }

@@ -6,7 +6,7 @@
 
    node test-contas.js */
 const { CriarContas, chaveNick, nickValido, emailValido, nomeValido,
-        normId, idValido, A32 } = require("./contas.js");
+        normId, idValido, formatarId, formatoIdAtual } = require("./contas.js");
 const RANK = require("./rank-server.js");
 
 const BACKEND = process.env.DB === "firestore" ? "firestore" : "capability";
@@ -339,36 +339,60 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
 }
 
 /* ================= 8. ID de jogador ================= */
-t("normId aceita com #", normId("#K7M2XA") === "K7M2XA");
-t("normId aceita minúscula", normId("k7m2xa") === "K7M2XA");
-t("normId recusa tamanho errado", normId("K7M2X") === "");
-t("normId recusa 0 e 1 (confundem com O e I)", normId("K0M1XA") === "");
-t("o alfabeto não tem 0, 1, I nem O",
-  A32.indexOf("0") < 0 && A32.indexOf("1") < 0 && A32.indexOf("I") < 0 && A32.indexOf("O") < 0, A32);
+t("normId aceita com #", normId("#00007") === "00007");
+t("normId recusa tamanho errado", normId("007") === "");
+t("normId recusa letra", normId("0007A") === "");
+t("formatarId poe zero a esquerda", formatarId(7) === "00007", formatarId(7));
+t("formatarId nao trunca acima de 5 digitos", formatarId(123456) === "123456");
+t("formatoIdAtual aceita 5 digitos", formatoIdAtual("00042") === true);
+t("formatoIdAtual recusa formato antigo (6 alfanumerico)", formatoIdAtual("K7M2XA") === false);
 
 {
   const A = CriarContas(makeDb());
   const p = await A.criar("u1", { nick: "ana", nome: "Ana Souza", email: "a@b.co" });
   t("conta nova nasce com ID", !!p.id, JSON.stringify(p.id));
-  t("ID tem 6 caracteres", p.id && p.id.length === 6, String(p.id));
-  t("ID só usa o alfabeto seguro",
-    p.id && p.id.split("").every(c => A32.indexOf(c) >= 0), String(p.id));
+  t("ID é o primeiro da contagem: #00001", p.id === "00001", String(p.id));
 
   const porId = await A.porId(p.id);
   t("acha por ID", porId && porId.uid === "u1", JSON.stringify(porId));
   t("acha por ID com #", (await A.porId("#" + p.id)).uid === "u1");
-  t("acha por ID em minúscula", (await A.porId(p.id.toLowerCase())).uid === "u1");
-  t("ID inexistente devolve null", (await A.porId("ZZZZZZ")) === null);
+  t("ID inexistente devolve null", (await A.porId("99999")) === null);
 
   t("buscar acha por apelido", (await A.buscar("ana")).uid === "u1");
   t("buscar acha por ID", (await A.buscar(p.id)).uid === "u1");
   t("buscar com texto solto devolve null", (await A.buscar("naoexiste")) === null);
 
   const B = await A.criar("u2", { nick: "bia", nome: "Bia Lima", email: "b@b.co" });
-  t("dois jogadores, dois IDs diferentes", B.id !== p.id, p.id + " vs " + B.id);
+  t("segundo cadastro pega o próximo: #00002", B.id === "00002", String(B.id));
+  t("dois jogadores, dois IDs diferentes", B.id !== p.id);
+
+  const C = await A.criar("u3", { nick: "caio", nome: "Caio Dias", email: "c@b.co" });
+  t("terceiro pega #00003, contador nunca reinicia", C.id === "00003", String(C.id));
 }
 
-/* conta antiga (sem ID) ganha um sem pedir nada */
+/* cadastros concorrentes nunca saem com o mesmo número — é o ponto
+   central do sistema: sem isso, dois sinais de "criar conta" ao mesmo
+   tempo dariam o mesmo ID pra duas pessoas. Cada candidato trava
+   individualmente (não um contador central), então isso é rápido: só
+   quem mira o MESMO número ao mesmo tempo disputa, e quem perde anda
+   pro próximo na hora, sem esperar TTL nenhum. */
+{
+  const A = CriarContas(makeDb());
+  const uids = ["c1", "c2", "c3", "c4", "c5"];
+  const nomes = ["Ana Um", "Bia Dois", "Caio Tres", "Duda Quatro", "Ema Cinco"];
+  const t0 = Date.now();
+  const perfis = await Promise.all(uids.map(function(uid, i){
+    return A.criar(uid, { nick: "n" + uid, nome: nomes[i], email: uid + "@b.co" });
+  }));
+  const ids = perfis.map(function(p){ return p.id; });
+  t("5 cadastros simultâneos, 5 IDs distintos",
+    new Set(ids).size === 5, JSON.stringify(ids));
+  t("todos no formato novo", ids.every(formatoIdAtual), JSON.stringify(ids));
+  t("rápido: sem fila de TTL entre cadastros sequenciais/concorrentes",
+    Date.now() - t0 < 1000, (Date.now() - t0) + "ms");
+}
+
+/* conta sem ID nenhum ganha um sem pedir nada */
 {
   const db2 = makeDb();
   const A = CriarContas(db2);
@@ -377,10 +401,34 @@ t("o alfabeto não tem 0, 1, I nem O",
   t("simulou conta sem ID", !(await A.perfilPublico("velho")).id);
 
   const p = await A.garantirId("velho");
-  t("garantirId gera pra conta antiga", !!p.id, JSON.stringify(p.id));
+  t("garantirId gera pra conta sem ID", !!p.id, JSON.stringify(p.id));
+  t("no formato novo", formatoIdAtual(p.id));
   t("e o ID fica gravado", !!(await A.perfilPublico("velho")).id);
   const mesmo = await A.garantirId("velho");
   t("chamar de novo não troca o ID", mesmo.id === p.id);
+}
+
+/* conta com ID no FORMATO ANTIGO (6 chars alfanuméricos, de antes desta
+   troca) migra sozinha pro formato novo — é exatamente o caso das duas
+   contas de teste reais ("teste", "dlzin"), criadas antes desta mudança. */
+{
+  const db3 = makeDb();
+  const A = CriarContas(db3);
+  await A.criar("teste", { nick: "teste", nome: "Conta Teste", email: "t@b.co" });
+  await db3.doc("perfis/teste").update({ id: "K7M2XA" });   // formato antigo, simulado
+  await db3.doc("ids/K7M2XA").set({ id: "K7M2XA", uid: "teste", em: 1 });
+  t("simulou conta com ID no formato antigo",
+    (await A.perfilPublico("teste")).id === "K7M2XA");
+
+  const p = await A.garantirId("teste");
+  t("garantirId detecta formato antigo e migra", formatoIdAtual(p.id), JSON.stringify(p.id));
+  t("o ID antigo não é reaproveitado", p.id !== "K7M2XA");
+  t("perfil público reflete o novo ID", (await A.perfilPublico("teste")).id === p.id);
+  t("busca pelo ID antigo não acha mais ninguém", (await A.porId("K7M2XA")) === null);
+  t("busca pelo ID novo acha a conta", (await A.porId(p.id)).uid === "teste");
+
+  const outraVez = await A.garantirId("teste");
+  t("já migrada, não migra de novo", outraVez.id === p.id);
 }
 
 /* anonimizar libera o ID */
