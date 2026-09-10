@@ -29,7 +29,7 @@ const injected = base.slice(0, at) +
   "calcClassificacao:calcClassificacao,listaPartidas:listaPartidas," +
   "wordFor:wordFor,cardsFor:cardsFor,decode:decode,encode:encode," +
   "ALL_MASK:ALL_MASK,NIVEIS:NIVEIS,POOL:POOL};" + tail;
-const script = new vm.Script(injected, { filename: "quem-sou-eu-online.html" });
+const script = new vm.Script(injected, { filename: "quem-sou-eu-temas.html" });
 
 /* ---------------- DOM mínimo (só para o app carregar) ---------------- */
 class El {

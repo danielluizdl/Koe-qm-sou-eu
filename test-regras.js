@@ -63,14 +63,20 @@ async function t(nome, fn){
     () => assertSucceeds(getDoc(doc(bia, "perfis/ana"))));
   await t("deslogado NÃO lê perfil",
     () => assertFails(getDoc(doc(fora, "perfis/ana"))));
-  await t("dono atualiza o próprio agregado",
-    () => assertSucceeds(updateDoc(doc(ana, "perfis/ana"), { saldo: 7, atualizadoEm: 2 })));
+  await t("dono edita nick e ID do próprio perfil",
+    () => assertSucceeds(updateDoc(doc(ana, "perfis/ana"), { nick: "Aninha", atualizadoEm: 2 })));
+  await t("nem o DONO grava o próprio saldo (é da Cloud Function)",
+    () => assertFails(updateDoc(doc(ana, "perfis/ana"), { saldo: 7 })));
+  await t("nem o DONO mexe em partidas/vitorias do agregado",
+    () => assertFails(updateDoc(doc(ana, "perfis/ana"), { partidas: 10, vitorias: 10 })));
   await t("OUTRO NÃO infla o saldo alheio",
     () => assertFails(updateDoc(doc(bia, "perfis/ana"), { saldo: 999 })));
   await t("ninguém apaga perfil (salas permanentes dependem dele)",
     () => assertFails(deleteDoc(doc(ana, "perfis/ana"))));
   await t("conta nova não nasce com saldo",
     () => assertFails(setDoc(doc(zeca, "perfis/zeca"), perfilBase("zeca", { saldo: 50 }))));
+  await t("conta nova não nasce com pódios nem somaAprov",
+    () => assertFails(setDoc(doc(zeca, "perfis/zeca"), perfilBase("zeca", { podios: 3 }))));
   await t("conta nova zerada é aceita",
     () => assertSucceeds(setDoc(doc(zeca, "perfis/zeca"), perfilBase("zeca"))));
   await t("não dá pra criar perfil no nome de outro",
@@ -104,15 +110,15 @@ async function t(nome, fn){
   await t("dono lê a própria lista",
     () => assertSucceeds(getDocs(collection(ana, "usuarios/ana/amigos"))));
 
-  /* ============ partidas: escreve uma vez, nunca mais muda ============ */
+  /* ============ partidas: só o Admin SDK escreve (Cloud Function) ============ */
   await semear(async db => {
     await setDoc(doc(db, "usuarios/ana/partidas/p0"), { pid:"p0", n:3, posicao:1, saldo:2 });
   });
-  await t("dono grava a própria partida",
-    () => assertSucceeds(setDoc(doc(ana, "usuarios/ana/partidas/p1"),
+  await t("dono LÊ o próprio histórico de partidas",
+    () => assertSucceeds(getDocs(collection(ana, "usuarios/ana/partidas"))));
+  await t("nem o DONO cria partida à mão (declararia qualquer saldo)",
+    () => assertFails(setDoc(doc(ana, "usuarios/ana/partidas/p1"),
       { pid:"p1", n:3, posicao:1, saldo:2, aproveitamento:1 })));
-  await t("id do documento tem que bater com o pid",
-    () => assertFails(setDoc(doc(ana, "usuarios/ana/partidas/p2"), { pid:"outro", n:3 })));
   await t("partida gravada é IMUTÁVEL",
     () => assertFails(updateDoc(doc(ana, "usuarios/ana/partidas/p0"), { saldo: 99 })));
   await t("partida gravada não pode ser apagada",

@@ -1,0 +1,11 @@
+{
+  "name": "quem-sou-eu-functions",
+  "description": "Cloud Function que deriva o agregado do rank do resultado gravado pelo host",
+  "private": true,
+  "main": "index.js",
+  "engines": { "node": "20" },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.0"
+  }
+}

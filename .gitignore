@@ -1,4 +1,6 @@
 *.log
+.agents/
+.claude/
 .DS_Store
 .firebase/
 .firebaserc
@@ -9,4 +11,5 @@ graphify-out/
 home-deslogada.png
 node_modules/
 public/
+skills-lock.json
 tela-*.png

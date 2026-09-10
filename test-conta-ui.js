@@ -120,6 +120,20 @@ function makeDb(){
   return { doc: dref, collection: cref, _dump: () => Object.fromEntries(store) };
 }
 
+/* O agregado do rank vem do servidor: o host grava o resultado em
+   salas/{sala}/hist/registro e rank-server.js#processarPartida (o mesmo
+   código da Cloud Function) deriva partidas + agregado. */
+const RANK = require("./rank-server.js");
+async function jogarPartida(db, pid, sala, ordem){
+  const resultados = ordem.map((o, i) => ({ id: o.id, nick: o.id, carta: "c" + i, posicao: i + 1 }));
+  const ref = db.doc("salas/" + sala + "/hist/registro");
+  const s = await ref.get();
+  const items = (s.exists && s.data().items) || {};
+  items[pid] = { terminadaEm: Date.now(), mask: 1, nivel: 0, resultados };
+  await ref.set({ items });
+  return RANK.processarPartida(db, sala, pid);
+}
+
 /* ---------- QSE_FIREBASE de mentira, no contrato do boot ----------
    Reproduz o que o Firebase Auth faz de verdade: recusa e-mail repetido,
    recusa senha curta, recusa credencial errada. Sem isso o teste provaria
@@ -425,8 +439,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   await outro.aceitar("uid-2", "uid-1");
 
   const ordem = [{ id:"uid-1", chave:1 }, { id:"uid-2", chave:2 }, { id:"x", chave:3 }];
-  await A.ui.CONTA.api.registrarMinhaPartida("uid-1", { pid:"p1", ordem });
-  await outro.registrarMinhaPartida("uid-2", { pid:"p1", ordem });
+  await jogarPartida(DB, "p1", "FESTA", ordem);
   click("aba-rank");
   await settle();
   ok(g("amigos-rank").children.length === 2, "ranking com as 2 pessoas que jogaram, veio: " +
@@ -469,10 +482,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
     /* o teste ja registrou partida antes; o que importa aqui e a
        DIFERENCA que esta partida causa, nao o total acumulado */
     const antes = await A.ui.CONTA.api.perfil(uid);
-    await A.ui.CONTA.api.registrarMinhaPartida(uid, {
-      pid: "pX", sala: "FESTA",
-      ordem: [{ id: uid, chave: 1 }, { id: "uid-9", chave: 2 }]
-    });
+    await jogarPartida(DB, "pX", "FESTA", [{ id: uid, chave: 1 }, { id: "uid-9", chave: 2 }]);
     await A.ui.CONTA.api.marcarSala(uid, "FESTA", { partida: true });
     const novos = await A.ui.CONTA.api.amizadeAutomatica(uid, ["uid-9"]);
     await settle();

@@ -1975,17 +1975,14 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     }
     function limpaAvanco(){ C._avancando = false; }
 
-    /* Cada aparelho fecha a PRÓPRIA partida: grava o resultado, soma o
-       agregado e vira amigo de quem jogou junto.
+    /* Fim de partida, do lado da conta: marca a sala e vira amigo de
+       quem jogou junto. A PONTUAÇÃO não passa por aqui — quem grava o
+       resultado é o host (gravarHist), e a Cloud Function derivarRank
+       soma o agregado pelo Admin SDK. Cada aparelho ainda faz a amizade
+       automática sozinho porque a regra só deixa criar a aresta que
+       aponta pra você.
 
-       Por que cada um, e não o host: a regra de segurança só deixa
-       escrever no seu próprio perfil e criar a aresta de amizade que
-       aponta pra você. Se o host fizesse por todos, a regra teria de
-       liberar escrita cruzada — que é como se fabrica ponto no rank
-       alheio.
-
-       Roda uma vez por partida: _fechada guarda o pid já processado, e
-       registrarMinhaPartida é idempotente do lado do banco também. */
+       Roda uma vez por partida: _fechada guarda o pid já processado. */
     C._fechada = null;
     function fecharMinhaPartida(){
       if (!C.sala || C.sala.__apagada || C.sala.fase !== "fim") return;
@@ -1999,15 +1996,11 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
       C._fechada = pid;
       if (typeof aoFimDaPartida === "function"){
-        var ordem = [], outros = [];
-        for (var k = 0; k < r.length; k++){
-          ordem.push({ id: r[k].id, chave: r[k].acertouEm });
+        var outros = [];
+        for (var k = 0; k < r.length; k++)
           if (r[k].id !== C.meuId) outros.push(r[k].id);
-        }
         aoFimDaPartida({
-          pid: pid, sala: C.codigo, meuId: C.meuId,
-          terminadaEm: C.sala.fimEm || agora(),
-          ordem: ordem, outros: outros
+          pid: pid, sala: C.codigo, meuId: C.meuId, outros: outros
         });
       }
     }
@@ -2931,15 +2924,13 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     if (info.meuId !== CONTA.ident.uid) return;   // jogando de convidado
     var uid = CONTA.ident.uid;
 
-    CONTA.api.registrarMinhaPartida(uid, {
-      pid: info.pid, sala: info.sala,
-      terminadaEm: info.terminadaEm, ordem: info.ordem
-    }).then(function(){
-      return CONTA.api.perfil(uid);
-    }).then(function(perf){
-      if (perf) CONTA.perfil = perf;
-      return CONTA.api.marcarSala(uid, info.sala, { partida: true, nick: CONTA.perfil.nick });
-    }).then(function(){
+    /* O agregado do rank NÃO é escrito aqui: a Cloud Function derivarRank
+       o deriva do resultado que o host gravou em salas/{codigo}/hist.
+       Aqui só marcamos a sala e viramos amigo de quem jogou junto —
+       amizade tem que ser do cliente (a regra só deixa criar a aresta
+       que aponta pra você). */
+    CONTA.api.marcarSala(uid, info.sala, { partida: true, nick: CONTA.perfil && CONTA.perfil.nick })
+    .then(function(){
       return CONTA.api.amizadeAutomatica(uid, info.outros);
     }).then(function(novos){
       /* Adicionar em silêncio seria surpresa desagradável: jogar com
@@ -2952,6 +2943,10 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
           : "Vocês agora são amigos: " + nomes.join(", ") + ".");
       }
       pintarHome();
+      /* O agregado que a função derivou chega um pouco depois da partida
+         acabar. Uma releitura tardia atualiza o número da home sem o
+         jogador precisar navegar. */
+      setTimeout(carregarPerfil, 4000);
     }, noop);
   }
 
@@ -3192,7 +3187,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       var dm = decodeMesa5(soNum);
       if (dm){
         iniciarMesa({ codigo: dm.codigo, mask: dm.mask, nivel: dm.nivel,
-          seed: dm.seed, n: dm.n, nicks: [] }, false);
+          raw: dm.raw, n: dm.n, nicks: [] }, false);
         return;
       }
     }
@@ -3753,8 +3748,9 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   var pausaPassar = false;     // tela intermediária depois de esconder
   var mesaTema = 0;
 
-  /* 21 temas (5 presets + os 16 baralhos do clássico). O índice cabe
-     em 5 bits, então o jogo inteiro cabe num número de 5 dígitos. */
+  /* 21 temas (5 presets + os 16 baralhos do clássico). Tema e nível
+     empacotados juntos (21 × 3 = 63) cabem em 6 bits, e o jogo inteiro
+     ainda cabe num número de 5 dígitos. */
   var TEMAS = [
     { nome: "Tudo",           mask: ALL_MASK },
     { nome: "Só Brasil",      mask: BR_MASK },
@@ -3786,19 +3782,26 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   }
   var MIX5 = 26069, UNMIX5 = invMod16(26069);
 
-  /* 16 bits: tema(5) | nível(2) | pessoas-2(4) | semente(2) | check(3) */
-  function checksum5(tema, nivel, n, seed){
+  /* 16 bits: tema×nível(6) | pessoas-2(4) | check(6)
+     21 temas × 3 níveis = 63 combinações cabem em 6 bits. Não há campo
+     de semente: o mesmo tema+nível+n sempre distribui as mesmas cartas.
+     Essa variação de replay foi trocada por 3 bits a mais de
+     verificação — o erro de um dígito que virava outra partida válida
+     caiu de ~6,8% (check de 3 bits) para ~1,6% (check de 6). */
+  function temaNivel(tema, nivel){ return (tema & 31) * 3 + (nivel & 3); }
+  function checksum5(tn, n){
     var h = 2166136261;
-    h = Math.imul(h ^ tema, 16777619);
-    h = Math.imul(h ^ nivel, 16777619);
+    h = Math.imul(h ^ tn, 16777619);
     h = Math.imul(h ^ n, 16777619);
-    h = Math.imul(h ^ seed, 16777619);
     h ^= h >>> 13;
-    return (h >>> 0) % 8;
+    return (h >>> 0) % 64;
   }
-  function encodeMesa5(tema, nivel, n, seed){
-    var v = (tema & 31) | ((nivel & 3) << 5) | (((n - 2) & 15) << 7)
-          | ((seed & 3) << 11) | (checksum5(tema, nivel, n, seed) << 13);
+  /* Embaralhamento das cartas: sem semente no código, deriva da própria
+     configuração — determinístico e diferente por tema/nível/n. */
+  function rawMesa(tn, n){ return ((tn * 16) + ((n - 2) & 15)) >>> 0; }
+  function encodeMesa5(tema, nivel, n){
+    var tn = temaNivel(tema, nivel);
+    var v = (tn & 63) | (((n - 2) & 15) << 6) | (checksum5(tn, n) << 10);
     var s = "" + ((v * MIX5) & 0xFFFF);
     while (s.length < 5) s = "0" + s;
     return s;
@@ -3809,13 +3812,13 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     var x = parseInt(str, 10);
     if (x > 65535) return null;
     var v = (x * UNMIX5) & 0xFFFF;
-    var tema = v & 31, nivel = (v >> 5) & 3, n = ((v >> 7) & 15) + 2;
-    var seed = (v >> 11) & 3, chk = (v >> 13) & 7;
+    var tn = v & 63, n = ((v >> 6) & 15) + 2, chk = (v >> 10) & 63;
+    var tema = (tn / 3) | 0, nivel = tn % 3;
     if (!TEMAS[tema] || nivel >= NIVEIS.length || n < 2 || n > 16) return null;
-    if (chk !== checksum5(tema, nivel, n, seed)) return null;
+    if (chk !== checksum5(tn, n)) return null;
     var mask = TEMAS[tema].mask;
     if (cardsFor(mask, nivel).length < n) return null;
-    return { codigo: str, tema: tema, mask: mask, nivel: nivel, n: n, seed: seed };
+    return { codigo: str, tema: tema, mask: mask, nivel: nivel, n: n, raw: rawMesa(tn, n) };
   }
 
   function algumNome(nicks){
@@ -3871,7 +3874,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   function CriarMesa(p){
     var M = {
-      codigo: p.codigo, mask: p.mask, nivel: p.nivel, n: p.n, seed: p.seed,
+      codigo: p.codigo, mask: p.mask, nivel: p.nivel, n: p.n, raw: p.raw,
       nicks: (p.nicks || []).slice(0, p.n),
       slot: 0, rodada: 1, nick: "", _ouvintes: []
     };
@@ -3905,7 +3908,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       emitir();
     };
     function cartaSlot(k){
-      return k ? wordFor({ mask: M.mask, nivel: M.nivel, raw: M.seed }, M.rodada, k) : null;
+      return k ? wordFor({ mask: M.mask, nivel: M.nivel, raw: M.raw }, M.rodada, k) : null;
     }
     M.minhaCarta = function(){ return cartaSlot(M.slot); };
     M.esconder = function(){ var q = {}; q["e_" + marca()] = 1; grava(q); emitir(); return Promise.resolve(); };
@@ -4113,9 +4116,9 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     if (cardsFor(mask, draft.nivel).length < n){ toast("Esse tema não tem carta pra " + n + "."); return; }
     var nomes = coletarNomes();
     nomes = algumNome(nomes) ? embaralhar(nomes) : [];
-    var seed = Math.floor(Math.random() * 4);
-    var codigo = encodeMesa5(mesaTema, draft.nivel, n, seed);
-    iniciarMesa({ codigo: codigo, mask: mask, nivel: draft.nivel, n: n, seed: seed, nicks: nomes }, true);
+    var codigo = encodeMesa5(mesaTema, draft.nivel, n);
+    iniciarMesa({ codigo: codigo, mask: mask, nivel: draft.nivel, n: n,
+      raw: rawMesa(temaNivel(mesaTema, draft.nivel), n), nicks: nomes }, true);
   }
   $("modo-mesa").addEventListener("click", function(){ modoCriarMesaTela(); });
   $("modo-classico").addEventListener("click", function(){ modoCriarClassicoTela(); });
@@ -4146,7 +4149,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   if (mesaHash){
     iniciarMesa({ codigo: mesaHash.codigo, mask: mesaHash.mask,
-      nivel: mesaHash.nivel, n: mesaHash.n, seed: mesaHash.seed, nicks: mesaHash.nicks }, false);
+      nivel: mesaHash.nivel, n: mesaHash.n, raw: mesaHash.raw, nicks: mesaHash.nicks }, false);
   } else if (decode(hash)){
     code = hash; game = decode(hash); round = 1; slot = 0;
     save(); openSlots();

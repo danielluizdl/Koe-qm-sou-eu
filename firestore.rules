@@ -39,7 +39,7 @@ service cloud.firestore {
        percorrendo a árvore inteira da expressão para montar o
        diagnóstico — não uma negação errada. O que importa está coberto:
        os casos que DEVEM ser permitidos passam (assertSucceeds) e os
-       que devem ser negados são negados (assertFails), 50 de 50 em
+       que devem ser negados são negados (assertFails), todos em
        test-regras.js. Não persiga essas linhas no log achando que são
        bug; olhe o resultado do suite. */
     function existia()     { return resource != null; }
@@ -69,16 +69,19 @@ service cloud.firestore {
                     && campos().partidas == 0
                     && campos().saldo == 0
                     && campos().vitorias == 0
+                    && campos().podios == 0
+                    && campos().somaAprov == 0
                     && campos().anonimo == false;
 
-      /* O dono atualiza o próprio agregado. A regra NÃO consegue
-         verificar se o saldo declarado bate com a partida — isso
-         exigiria ler as partidas de todos os participantes.
+      /* O dono só mexe no que é dele de fato: nick, ID, flag de
+         anônimo. O AGREGADO DO RANK (partidas/vitorias/podios/saldo/
+         somaAprov) NÃO está aqui — quem escreve é a Cloud Function
+         `derivarRank`, pelo Admin SDK, a partir do resultado que o
+         host gravou. É isso que impede inflar o saldo pelo console.
          Ver "LIMITE CONHECIDO" no fim do arquivo. */
       allow update: if eu(uid) && existia()
                     && campos().uid == anterior().uid
-                    && mudou(['nick','nickChave','id','anonimo','atualizadoEm',
-                              'partidas','vitorias','podios','saldo','somaAprov']);
+                    && mudou(['nick','nickChave','id','anonimo','atualizadoEm']);
 
       /* Nunca some: salas são permanentes e o histórico depende dele.
          Encerrar conta ANONIMIZA (update), não apaga. */
@@ -110,13 +113,14 @@ service cloud.firestore {
         allow read, write: if eu(uid);
       }
 
-      /* partidas: histórico imutável do jogador. Escreve uma vez e
-         nunca mais muda — é a fonte de verdade que permite recalcular
-         o agregado se ele se perder ou for adulterado. */
+      /* partidas: histórico imutável do jogador. Só o Admin SDK
+         escreve (a Cloud Function `derivarRank`, a partir do resultado
+         que o host gravou em salas/{codigo}/hist). O cliente não cria:
+         se criasse, poderia declarar qualquer saldo e a função só
+         somaria por cima. O dono lê o próprio histórico. */
       match /partidas/{pid} {
         allow read: if eu(uid);
-        allow create: if eu(uid) && campos().pid == pid;
-        allow update, delete: if false;
+        allow create, update, delete: if false;
       }
     }
 
@@ -207,23 +211,24 @@ service cloud.firestore {
 }
 
 /* ============================================================
-   LIMITE CONHECIDO — o agregado é declarado pelo próprio jogador
+   LIMITE CONHECIDO — o host da sala ainda dita o resultado
 
-   `perfis/{uid}.saldo` é escrito pelo dono. Uma regra não consegue
-   provar que o saldo declarado corresponde a uma partida real: para
-   isso ela teria de ler as partidas de todos os participantes, e
-   regra do Firestore tem orçamento de leitura pequeno.
+   O agregado do rank NÃO é mais escrito pelo cliente. A Cloud Function
+   `derivarRank` dispara na escrita de `salas/{codigo}/hist/registro`,
+   lê os `resultados` que o host gravou, pontua com pontuacao.js e
+   escreve `usuarios/{uid}/partidas` + `perfis/{uid}` pelo Admin SDK.
+   O cliente perdeu a escrita nas duas coleções. Inflar o saldo sozinho
+   pelo console não funciona mais.
 
-   Consequência: alguém com conhecimento técnico consegue inflar o
-   próprio saldo pelo console do navegador.
+   O que ainda dá: quem é HOST de uma sala escreve o `hist` dela, e a
+   função confia nesse resultado. Um host mal-intencionado consegue
+   deslocar o rank dos participantes DAQUELA sala — não o próprio à
+   toa, e só de quem esteve presente com ele. Fechar isso exigiria
+   validar jogada a jogada (quem revelou quando, quem acertou a senha
+   de quem), o que é bem mais código.
 
-   Por que isso é aceitável AGORA: o rank é entre amigos, num jogo
-   presencial. Quem trapaceia trapaceia contra gente que está do lado
-   dele, e as partidas ficam gravadas em `usuarios/{uid}/partidas`,
-   imutáveis — dá pra recalcular e ver a divergência (A.recalcular()).
-
-   Se um dia isso incomodar, a correção é mover a gravação do agregado
-   pra uma Cloud Function que lê a sala e valida o resultado. Aí o
-   cliente perde a escrita em `saldo` e o problema acaba. É uma troca
-   de custo (Functions exigem o plano Blaze), não de arquitetura.
+   Por que o residual é aceitável: continua sendo um jogo presencial
+   entre amigos, e as partidas ficam imutáveis em
+   `usuarios/{uid}/partidas` — dá pra auditar (`A.rankAmigos` lê o
+   agregado; a subcoleção de partidas é a prova).
    ============================================================ */

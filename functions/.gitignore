@@ -1,0 +1,6 @@
+node_modules/
+
+# Copiados da raiz pelo predeploy (node build.js --stage-functions).
+# A fonte de verdade é ../rank-server.js e ../pontuacao.js.
+/rank-server.js
+/pontuacao.js

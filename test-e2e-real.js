@@ -89,13 +89,18 @@ const pega = async p => { try { return { v: await p }; } catch(e){ return { e: e
   const r6 = await pega(signInWithEmailAndPassword(auth, A.email, A.senha));
   t("senha certa entra", !!r6.v, String(r6.e));
 
-  const ordem = [{ id: uidA, chave: 1 }, { id: uidB, chave: 2 }, { id: "x", chave: 3 }];
-  const r7 = await pega(contas.registrarMinhaPartida(uidA, { pid: "e2e-" + m, sala: "TESTE", ordem }));
-  t("registra a própria partida", r7.v === "registrada", String(r7.e));
+  /* o agregado do rank agora é do Admin SDK (Cloud Function derivarRank).
+     O cliente NÃO escreve — provamos que a regra nega as duas escritas. */
+  const wSaldo = await pega(db.doc("perfis/" + uidA).update({ saldo: 999 }));
+  t("cliente NÃO infla o próprio saldo", !!wSaldo.e, "escreveu: " + JSON.stringify(wSaldo.v));
+  const wPart = await pega(db.doc("usuarios/" + uidA + "/partidas/e2e-" + m).set({
+    pid: "e2e-" + m, n: 3, posicao: 1, saldo: 2, aproveitamento: 1
+  }));
+  t("cliente NÃO cria partida à mão", !!wPart.e, "escreveu: " + JSON.stringify(wPart.v));
 
   const p2 = await pega(contas.perfil(uidA));
-  t("agregado somou a partida", p2.v && p2.v.partidas === 1, p2.v ? JSON.stringify(p2.v) : String(p2.e));
-  t("vencer de 3 dá saldo +2", p2.v && p2.v.saldo === 2, p2.v ? String(p2.v.saldo) : "");
+  t("agregado segue zerado (nada de cliente entrou)",
+    p2.v && p2.v.partidas === 0 && p2.v.saldo === 0, p2.v ? JSON.stringify(p2.v) : String(p2.e));
 
   const rank = await pega(contas.rankAmigos(uidA));
   t("ranking responde", Array.isArray(rank.v), String(rank.e));
@@ -105,7 +110,6 @@ const pega = async p => { try { return { v: await p }; } catch(e){ return { e: e
   const limpar = async (uid, nick) => {
     if (!uid) return;
     await pega(db.doc("nicks/" + nick)["delete"]());
-    await pega(db.doc("usuarios/" + uid + "/partidas/e2e-" + m)["delete"]());
     await pega(db.doc("usuarios/" + uid + "/amigos/" + (uid === uidA ? uidB : uidA))["delete"]());
     await pega(db.doc("usuarios/" + uid)["delete"]());
   };

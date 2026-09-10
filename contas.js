@@ -7,8 +7,8 @@
    COLEÇÕES
      usuarios/{uid}                  PRIVADO: nome, e-mail
      usuarios/{uid}/amigos/{outro}   PRIVADO: uma aresta por lado
-     usuarios/{uid}/partidas/{pid}   PRIVADO: histórico imutável
-     perfis/{uid}                    PÚBLICO: nick + agregado do rank
+     usuarios/{uid}/partidas/{pid}   histórico imutável — SÓ o Admin SDK grava
+     perfis/{uid}                    PÚBLICO: nick + ID; agregado do rank SÓ o Admin SDK
      nicks/{chave}                   PÚBLICO: unicidade -> uid, nick
 
    POR QUE PERFIL É DOIS DOCUMENTOS
@@ -19,13 +19,14 @@
    e-mail de amigo. Então o que é público (nick, saldo, partidas) mora
    separado do que é pessoal (nome, e-mail), e só o dono lê o segundo.
 
-   TRÊS DECISÕES QUE MOLDAM AS REGRAS DE SEGURANÇA
+   DUAS DECISÕES QUE MOLDAM AS REGRAS DE SEGURANÇA
    -----------------------------------------------
-   1. Cada aparelho grava SÓ a própria linha. Quando a partida acaba,
-      cada jogador escreve o seu resultado e atualiza o seu agregado.
-      O host não escreve no perfil de ninguém. Sem isso, a regra teria
-      de liberar escrita cruzada entre contas — que é como se fabrica
-      ponto no rank dos outros.
+   1. O agregado do rank e o histórico de partidas NÃO são escritos
+      pelo cliente. A Cloud Function `derivarRank` deriva os dois pelo
+      Admin SDK, a partir do resultado que o host gravou em
+      salas/{codigo}/hist. A pontuação vive em rank-server.js. Sem
+      isso, qualquer um inflava o próprio saldo pelo console — regra
+      nenhuma prova que um saldo declarado veio de partida real.
 
    2. Amizade são DUAS arestas, uma em cada perfil. A regra libera
       escrever em usuarios/{outro}/amigos/{eu} apenas quando o id do
@@ -119,7 +120,6 @@
     function refPerfil(uid){ return db.doc("perfis/" + uid); }      // público
     function refAmigos(uid){ return refUsuario(uid).collection("amigos"); }
     function refAmigo(uid, outro){ return refAmigos(uid).doc(outro); }
-    function refPartidas(uid){ return refUsuario(uid).collection("partidas"); }
     function refNick(chave){ return db.doc("nicks/" + chave); }
     function refId(id){ return db.doc("ids/" + id); }
 
@@ -445,60 +445,16 @@
     };
 
     /* ---------------- partidas e agregado ----------------
-       `ordem` é o ranking final da partida, do 1º ao último:
-       [{ id, chave }] — o mesmo formato que pontuacao.js consome.
-       Grava só a linha de `uid` e só mexe no agregado de `uid`. */
-    A.registrarMinhaPartida = function(uid, info){
-      info = info || {};
-      var pid = info.pid, ordem = info.ordem || [];
-      if (!pid) return Promise.reject(erro("sem_pid", "pid obrigatório"));
+       NÃO moram mais aqui. O cliente não grava `usuarios/{uid}/partidas`
+       nem o agregado de `perfis/{uid}` — as regras bloqueiam. Quem
+       escreve é a Cloud Function `derivarRank` (functions/index.js), a
+       partir do resultado que o host gravou em salas/{codigo}/hist.
+       A lógica de pontuação/reconstrução vive em rank-server.js, que a
+       função chama e os testes exercitam contra o db falso.
 
-      var linhas = PONTOS.pontuarPartida(ordem), minha = null, i;
-      for (i = 0; i < linhas.length; i++) if (linhas[i].id === uid) minha = linhas[i];
-      if (!minha) return Promise.reject(erro("fora_da_partida", "uid não está na ordem"));
-
-      /* idempotente: a mesma partida pode chegar duas vezes (reload,
-         listener reemitindo). Só conta uma. */
-      return refPartidas(uid).doc(pid).get().then(function(s){
-        if (s.exists) return "ja_registrada";
-        return refPartidas(uid).doc(pid).set({
-          pid: pid, sala: info.sala || "", terminadaEm: info.terminadaEm || agora(),
-          n: minha.n, posicao: minha.posicao,
-          saldo: minha.saldo, aproveitamento: minha.aproveitamento
-        }).then(function(){
-          return A.perfilPublico(uid);
-        }).then(function(p){
-          if (!p) return "sem_perfil";
-          return refPerfil(uid).update({
-            partidas: (p.partidas || 0) + 1,
-            vitorias: (p.vitorias || 0) + (minha.posicao === 1 ? 1 : 0),
-            podios: (p.podios || 0) + (minha.posicao <= 3 ? 1 : 0),
-            saldo: (p.saldo || 0) + minha.saldo,
-            somaAprov: (p.somaAprov || 0) + minha.aproveitamento,
-            atualizadoEm: agora()
-          }).then(function(){ return "registrada"; });
-        });
-      });
-    };
-
-    /* Reconstrói o agregado a partir das partidas gravadas. Rede de
-       segurança: se um update do agregado se perder, isso conserta
-       sem inventar número — as partidas é que são a verdade. */
-    A.recalcular = function(uid){
-      return refPartidas(uid).get().then(function(qs){
-        var t = { partidas: 0, vitorias: 0, podios: 0, saldo: 0, somaAprov: 0 }, i, d;
-        for (i = 0; i < qs.docs.length; i++){
-          d = qs.docs[i].data();
-          t.partidas++;
-          if (d.posicao === 1) t.vitorias++;
-          if (d.posicao <= 3) t.podios++;
-          t.saldo += d.saldo;
-          t.somaAprov += d.aproveitamento;
-        }
-        t.atualizadoEm = agora();
-        return refPerfil(uid).update(t).then(function(){ return t; });
-      });
-    };
+       Motivo: uma regra do Firestore não prova que o saldo declarado
+       veio de partida real, então antes dava pra inflar o rank pelo
+       console. Ver o "LIMITE CONHECIDO" em firestore.rules. */
 
     /* ---------------- minhas salas ----------------
        Onde a pessoa já jogou. Antes isso morava no localStorage, então

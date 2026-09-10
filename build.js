@@ -14,6 +14,18 @@ const RAIZ = __dirname;
 const SAIDA = path.join(RAIZ, "public");
 const JOGO = process.env.JOGO_SRC || "quem-sou-eu-temas.html";
 
+/* --stage-functions: copia as fontes compartilhadas pra dentro de
+   functions/ antes do deploy da Cloud Function (o deploy só sobe esse
+   diretório). Roda pelo predeploy em firebase.json. Não toca no site. */
+if (process.argv.indexOf("--stage-functions") >= 0){
+  const DEST = path.join(RAIZ, "functions");
+  ["rank-server.js", "pontuacao.js"].forEach(function(f){
+    fs.copyFileSync(path.join(RAIZ, f), path.join(DEST, f));
+    console.log("functions/" + f + "  (cópia de ../" + f + ")");
+  });
+  process.exit(0);
+}
+
 /* Ordem importa: o jogo lê window.QSE_FIREBASE na hora em que roda,
    então o boot precisa ter definido antes. */
 const SCRIPTS = [

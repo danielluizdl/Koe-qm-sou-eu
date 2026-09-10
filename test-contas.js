@@ -7,6 +7,7 @@
    node test-contas.js */
 const { CriarContas, chaveNick, nickValido, emailValido, nomeValido,
         normId, idValido, A32 } = require("./contas.js");
+const RANK = require("./rank-server.js");
 
 const BACKEND = process.env.DB === "firestore" ? "firestore" : "capability";
 
@@ -77,6 +78,21 @@ function t(nome, cond, extra){
   if (cond) ok++; else falhas.push(nome + (extra ? " — " + extra : ""));
 }
 const pega = async p => { try { return { v: await p }; } catch(e){ return { e: e.code || e.message }; } };
+
+/* O agregado do rank não é mais escrito pelo cliente: o host grava o
+   resultado da partida em salas/{sala}/hist/registro e a Cloud Function
+   deriva partidas + agregado pelo Admin SDK. Aqui simulamos o host e
+   rodamos rank-server.js#processarPartida, o mesmo código que a função
+   chama. `ordem` é [{id, chave}], já do 1º ao último. */
+async function jogarPartida(db, pid, sala, ordem){
+  const resultados = ordem.map((o, i) => ({ id: o.id, nick: o.id, carta: "c" + i, posicao: i + 1 }));
+  const ref = db.doc("salas/" + sala + "/hist/registro");
+  const snap = await ref.get();
+  const items = (snap.exists && snap.data().items) || {};
+  items[pid] = { terminadaEm: Date.now(), mask: 1, nivel: 0, resultados };
+  await ref.set({ items });
+  return RANK.processarPartida(db, sala, pid);
+}
 
 (async function(){
 
@@ -211,14 +227,16 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
     (await A.amigos("ana")).length === 1 && (await A.amigos("bia")).length === 0);
 }
 
-/* ================= 5. Registrar partida e agregado ================= */
+/* ================= 5. Partida e agregado (derivados do host) ================= */
 {
-  const A = CriarContas(makeDb());
+  const db = makeDb();
+  const A = CriarContas(db);
   await A.criar("ana", { nick: "ana", nome: "Ana Teste", email: "a@b.co" });
 
   const ordem = [{ id:"ana", chave:1 }, { id:"bia", chave:2 }, { id:"caio", chave:3 }];
-  t("registrar devolve 'registrada'",
-    (await A.registrarMinhaPartida("ana", { pid:"p1", sala:"FESTA", ordem })) === "registrada");
+  const r1 = await jogarPartida(db, "p1", "FESTA", ordem);
+  t("processa quem tem conta", r1.processados.join(",") === "ana", JSON.stringify(r1));
+  t("pula convidado sem conta", r1.pulados.sort().join(",") === "bia,caio", JSON.stringify(r1));
 
   let p = await A.perfil("ana");
   t("agregado conta a partida", p.partidas === 1);
@@ -226,34 +244,36 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
   t("vencer de 3 dá saldo +2", p.saldo === 2, String(p.saldo));
   t("aproveitamento somado é 1", Math.abs(p.somaAprov - 1) < 1e-9);
 
-  t("registrar a mesma partida de novo é no-op",
-    (await A.registrarMinhaPartida("ana", { pid:"p1", ordem })) === "ja_registrada");
+  const partida = await db.doc("usuarios/ana/partidas/p1").get();
+  t("a partida imutável foi gravada", partida.exists && partida.data().saldo === 2);
+
+  await jogarPartida(db, "p1", "FESTA", ordem);   // mesmo pid de novo
   p = await A.perfil("ana");
-  t("agregado não dobrou", p.partidas === 1 && p.saldo === 2);
+  t("reprocessar a mesma partida não dobra", p.partidas === 1 && p.saldo === 2, String(p.saldo));
 
   /* segunda partida, agora em último numa mesa de 8 */
   const o8 = [];
   for (let i = 0; i < 7; i++) o8.push({ id:"x"+i, chave:i });
   o8.push({ id:"ana", chave:7 });
-  await A.registrarMinhaPartida("ana", { pid:"p2", ordem: o8 });
+  await jogarPartida(db, "p2", "FESTA", o8);
   p = await A.perfil("ana");
   t("2 partidas no agregado", p.partidas === 2);
   t("último de 8 custa -7 (saldo 2-7=-5)", p.saldo === -5, String(p.saldo));
 
-  t("quem não está na ordem é recusado",
-    (await pega(A.registrarMinhaPartida("ana", { pid:"p3", ordem: o8.slice(0,3) }))).e === "fora_da_partida");
-  t("sem pid é recusado",
-    (await pega(A.registrarMinhaPartida("ana", { ordem }))).e === "sem_pid");
+  /* partida sem nenhum resultado desse pid é no-op */
+  const vazio = await RANK.processarPartida(db, "FESTA", "nao-existe");
+  t("pid sem resultado no hist é no-op", vazio.semResultado === true, JSON.stringify(vazio));
 
-  /* recalcular reconstrói do histórico imutável */
-  const rec = await A.recalcular("ana");
+  /* recalcularAgregado reconstrói do histórico imutável */
+  const rec = await RANK.recalcularAgregado(db, "ana");
   t("recalcular bate com o agregado", rec.partidas === 2 && rec.saldo === -5,
     JSON.stringify(rec));
 }
 
 /* ================= 6. Rank entre amigos ================= */
 {
-  const A = CriarContas(makeDb());
+  const db = makeDb();
+  const A = CriarContas(db);
   for (const [uid, nick] of [["ana","ana"],["bia","bia"],["caio","caio"],["dudu","dudu"]])
     await A.criar(uid, { nick, nome: nick.charAt(0).toUpperCase()+nick.slice(1)+" Teste", email: uid + "@b.co" });
 
@@ -261,14 +281,13 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
   await A.pedir("ana", "caio"); await A.aceitar("caio", "ana");
   /* dudu NÃO é amigo da ana */
 
-  const ordem = [{id:"ana",chave:1},{id:"bia",chave:2},{id:"caio",chave:3}];
-  await A.registrarMinhaPartida("ana",  { pid:"p1", ordem });
-  await A.registrarMinhaPartida("bia",  { pid:"p1", ordem });
-  await A.registrarMinhaPartida("caio", { pid:"p1", ordem });
-  await A.registrarMinhaPartida("dudu", { pid:"p9",
-    ordem: [{id:"dudu",chave:1},{id:"z",chave:2},{id:"y",chave:3},
-            {id:"w",chave:4},{id:"v",chave:5},{id:"t",chave:6},
-            {id:"s",chave:7},{id:"r",chave:8}] });
+  /* uma partida no hist pontua TODOS os participantes com conta de uma vez */
+  await jogarPartida(db, "p1", "FESTA",
+    [{id:"ana",chave:1},{id:"bia",chave:2},{id:"caio",chave:3}]);
+  await jogarPartida(db, "p9", "OUTRA",
+    [{id:"dudu",chave:1},{id:"z",chave:2},{id:"y",chave:3},
+     {id:"w",chave:4},{id:"v",chave:5},{id:"t",chave:6},
+     {id:"s",chave:7},{id:"r",chave:8}]);
 
   const r = await A.rankAmigos("ana");
   t("rank inclui você e seus amigos", r.length === 3, "tem " + r.length);
@@ -294,8 +313,7 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
   await A.criar("ana", { nick: "ana", nome: "Ana Souza", email: "a@b.co" });
   await A.criar("bia", { nick: "bia", nome: "Bia Teste", email: "b@b.co" });
   await A.pedir("ana", "bia"); await A.aceitar("bia", "ana");
-  await A.registrarMinhaPartida("ana", { pid:"p1",
-    ordem: [{id:"ana",chave:1},{id:"bia",chave:2}] });
+  await jogarPartida(db1, "p1", "FESTA", [{id:"ana",chave:1},{id:"bia",chave:2}]);
 
   const p = await A.anonimizar("ana");
   t("nick vira rótulo neutro", p.nick === "jogador removido");

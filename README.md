@@ -48,26 +48,39 @@ rodar em celular velho.
 quem-sou-eu-temas.html   o jogo inteiro: telas, estilo e lógica
 pontuacao.js             saldo e aproveitamento
 contas.js                perfil, apelido único, amizades, rank
+rank-server.js           pontua a partida do lado do servidor (roda na Function)
 firestore-adapter.js     contrato de db da capability sobre o SDK do Firebase
 firebase-boot.js         carrega o SDK, monta o db, login por link mágico
 firestore.rules          regras de segurança
-build.js                 monta public/index.html concatenando o acima
+functions/index.js       Cloud Function derivarRank: agregado do rank pelo Admin SDK
+build.js                 monta public/index.html; --stage-functions copia p/ functions/
 ```
 
 O jogo fala **um contrato de banco só** (`doc`/`collection`/`get`/`set`/`update`
 /`delete`/`onSnapshot`/`acquire`). O adaptador o entrega por cima do Firestore,
 então `CriarSalaCliente(db)` não sabe de onde vem o banco — e o mesmo suite de
-testes prova os dois backends.
+testes prova os dois backends. `rank-server.js` fala o mesmo contrato: os testes
+o exercitam contra o db falso, e a Cloud Function o chama em produção.
 
 ## Rodando
 
 ```bash
 npm install
 npm run build      # gera public/index.html
-npm test           # 12 suites
+npm test           # 15 suites
 npm run test:regras  # regras de segurança no emulador (precisa de Java)
 npm run deploy     # build + Firebase Hosting
 ```
+
+A Cloud Function `derivarRank` (`functions/`) exige o **plano Blaze**. Deploy
+separado, depois de `npm install` dentro de `functions/`:
+
+```bash
+npx firebase deploy --only functions,firestore:rules --project quem-sou-eu-e3e32
+```
+
+O predeploy (`node build.js --stage-functions`) copia `rank-server.js` e
+`pontuacao.js` para dentro de `functions/` — o deploy só sobe esse diretório.
 
 ## Sobre as chaves em `firebase-config.js`
 
@@ -80,18 +93,22 @@ as regras. Este projeto não usa nenhuma.
 
 ## Limites conhecidos
 
-**O agregado do rank é declarado pelo cliente.** Uma regra do Firestore não
-consegue provar que o saldo declarado corresponde a uma partida real — isso
-exigiria ler as partidas de todos os participantes. Alguém com conhecimento
-técnico consegue inflar o próprio saldo pelo console do navegador. As partidas
-ficam gravadas e imutáveis em `usuarios/{uid}/partidas`, então dá para
-recalcular e ver a divergência. A correção definitiva é uma Cloud Function.
+**O host da sala dita o resultado.** O agregado do rank não é mais escrito pelo
+cliente: a Cloud Function `derivarRank` dispara quando o host grava o resultado
+em `salas/{codigo}/hist`, pontua com `pontuacao.js` e escreve
+`usuarios/{uid}/partidas` + `perfis/{uid}` pelo Admin SDK. As regras tiraram
+essas duas escritas do cliente, então inflar o próprio saldo pelo console não
+funciona mais. O que resta: quem é **host** de uma sala escreve o `hist` dela, e
+a função confia nesse resultado — um host mal-intencionado consegue deslocar o
+rank dos participantes daquela sala (não o próprio à toa, e só de quem esteve
+com ele). Fechar isso exigiria validar jogada a jogada.
 
-**O código do Modo Mesa detecta ~93% dos erros de digitação.** Quando o formato
-passou a guardar o tema, o checksum caiu de 6 bits para 3. Hoje um erro de um
-dígito vira outra partida válida em **6,81%** das vezes — cerca de 1 em 15 — sem
-erro na tela, e a mesa recebe cartas que não combinam. Corrigir exige um dígito
-a mais ou menos sementes.
+**O código do Modo Mesa detecta ~98% dos erros de digitação.** Tema e nível
+passaram a ser empacotados juntos (6 bits em vez de 7) e o campo de semente saiu
+— os 3 bits liberados foram para o checksum, que subiu de 3 para 6 bits. Hoje um
+erro de um dígito vira outra partida válida em **~1,6%** das vezes (era 6,81%),
+sem erro na tela. O preço: o mesmo tema+nível+n distribui sempre as mesmas
+cartas, sem variação de replay.
 
 ## Licença
 
