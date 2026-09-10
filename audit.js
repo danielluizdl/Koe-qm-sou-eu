@@ -39,7 +39,6 @@ const G = (...ids) => e => ids.includes(e.grp);
 // mesma ordem do array DECKS no HTML — o índice é o bit no código
 const DECKS = [
   ["Desenhos", 0, G("animacao")],
-  ["Anime", 0, G("anime")],
   ["Super-herois", 0, G("herois")],
   ["Cinema", 0, G("cinema")],
   ["Series", 0, G("series")],

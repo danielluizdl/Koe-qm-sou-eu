@@ -305,19 +305,19 @@ async function main() {
   go("go-create");
   ok(offTela() === "s-create", "sem db: go-create abre s-create");
   ok(gd("create-modo").hidden === false, "sem db: aparece o toggle Mesa/Clássico");
-  /* Os dois modos têm grades DIFERENTES: o Mesa escolhe um dos 21
+  /* Os dois modos têm grades DIFERENTES: o Mesa escolhe um dos 20
      temas (o índice cabe nos 5 dígitos do código); o Clássico mantém
-     os 16 baralhos independentes, porque o código de 7 caracteres tem
+     os 15 baralhos independentes, porque o código de 7 caracteres tem
      espaço pra máscara inteira. */
   ok(gd("create-temas").hidden === false && gd("create-nomes").hidden === false,
      "modo Mesa: grade de temas + campos de nome");
-  ok(gd("create-baralhos").hidden === true, "modo Mesa: a grade dos 16 baralhos fica escondida");
-  ok(gd("mesa-temas").children.length === 21, "modo Mesa: 21 temas");
+  ok(gd("create-baralhos").hidden === true, "modo Mesa: a grade dos 15 baralhos fica escondida");
+  ok(gd("mesa-temas").children.length === 20, "modo Mesa: 20 temas");
   go("modo-classico");
   ok(gd("create-baralhos").hidden === false && gd("create-nomes").hidden === true,
-     "toggle p/ Clássico: volta pros 16 baralhos, sem os nomes");
+     "toggle p/ Clássico: volta pros 15 baralhos, sem os nomes");
   ok(gd("create-temas").hidden === true, "toggle p/ Clássico: a grade de temas some");
-  ok(gd("decks").children.length === 16, "Clássico: 16 baralhos independentes");
+  ok(gd("decks").children.length === 15, "Clássico: 15 baralhos independentes");
   go("do-create");
   ok(offTela() === "s-room", "Clássico: do-create gera código de 7 e abre s-room");
   go("go-join");

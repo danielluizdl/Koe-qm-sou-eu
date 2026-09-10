@@ -159,15 +159,27 @@ for (let r = 1; r <= 20; r++) for (let p = 1; p <= 8; p++)
 ok(iguais, "aparelhos diferentes com o mesmo código discordam");
 console.log("7. dois aparelhos com o mesmo código concordam em 20 rodadas: " + iguais);
 
-/* 8. seleção múltipla = união sem repetição */
-const soDesenhos = T.cardsFor(1, 2).length;
-const soAnime = T.cardsFor(2, 2).length;
-const juntos = T.cardsFor(3, 2).length;
-ok(juntos === soDesenhos + soAnime, "união deveria somar " + (soDesenhos + soAnime) + ", deu " + juntos);
-console.log("8. Desenhos(" + soDesenhos + ") + Anime(" + soAnime + ") = " + juntos + " sem repetir");
+/* máscara de um baralho pelo nome — nunca pelo bit cru, que desloca
+   se um baralho for removido ou reordenado (foi assim que a categoria
+   Anime saiu e "Bichos" deixou de ser o bit 64). */
+function maskDe(nome) {
+  const i = T.DECKS.findIndex(d => d.name === nome);
+  if (i < 0) throw new Error("baralho não encontrado: " + nome);
+  return 1 << i;
+}
+const MASK_DESENHOS = maskDe("Desenhos");
+const MASK_HEROIS = maskDe("Super-heróis");
+const MASK_BICHOS = maskDe("Bichos");
 
-const bichosSozinho = T.cardsFor(64, 2).length;
-const desenhosEBichos = T.cardsFor(1 | 64, 2).length;
+/* 8. seleção múltipla = união sem repetição */
+const soDesenhos = T.cardsFor(MASK_DESENHOS, 2).length;
+const soHerois = T.cardsFor(MASK_HEROIS, 2).length;
+const juntos = T.cardsFor(MASK_DESENHOS | MASK_HEROIS, 2).length;
+ok(juntos === soDesenhos + soHerois, "união deveria somar " + (soDesenhos + soHerois) + ", deu " + juntos);
+console.log("8. Desenhos(" + soDesenhos + ") + Super-heróis(" + soHerois + ") = " + juntos + " sem repetir");
+
+const bichosSozinho = T.cardsFor(MASK_BICHOS, 2).length;
+const desenhosEBichos = T.cardsFor(MASK_DESENHOS | MASK_BICHOS, 2).length;
 ok(desenhosEBichos < soDesenhos + bichosSozinho,
    "Bichos cruza os outros baralhos; a união não pode ser a soma pura");
 ok(new Set(T.cardsFor(T.ALL_MASK, 2)).size === T.cardsFor(T.ALL_MASK, 2).length,
