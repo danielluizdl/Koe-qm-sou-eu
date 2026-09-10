@@ -683,10 +683,10 @@ function testesPuros() {
   }
   ok(falhasCarta === 0, "senha: todas as " + T.POOL.length + " cartas conferem com o próprio nome (" + falhasCarta + " falhas)");
 
-  ok(T.normCodigo("  festa ") === "FESTA", "normCodigo: trim + maiúsculas");
-  ok(T.normCodigo("f3st@") === "F3ST", "normCodigo: descarta fora do alfabeto");
-  ok(T.normCodigo("OI01ABC") === "ABC", "normCodigo: remove O I 0 1 (L é válido no A32)");
-  ok(T.normCodigo("ABCDEFG") === "ABCDE", "normCodigo: corta em 5");
+  ok(T.normCodigo("  festa ") === "", "normCodigo: sala é só número, letra não sobra nenhuma");
+  ok(T.normCodigo("f3st@") === "3", "normCodigo: descarta tudo que não é dígito");
+  ok(T.normCodigo("ab12cd34ef") === "1234", "normCodigo: junta os dígitos espalhados");
+  ok(T.normCodigo("123456789") === "1234", "normCodigo: corta em 4");
   ok(T.nickValido("Zé") && !T.nickValido("") && !T.nickValido("nome muito comprido!!"), "nickValido: 1..14");
 
   // pontuação por posição + desempate por vitórias

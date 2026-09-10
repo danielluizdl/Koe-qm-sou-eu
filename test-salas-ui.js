@@ -209,12 +209,11 @@ async function main() {
   g("nick-input").value = "Ana";
   click("nick-ok");
   ok(tela() === "s-create", "nick-ok leva pra s-create");
-  g("create-code-input").value = "";           // sorteia
-  click("do-create");
+  click("do-create");                          // código sempre sorteado, sem campo pra digitar
   await settle();
   ok(tela() === "s-lobby", "do-create abre o lobby, foi pra " + tela());
   const SC = A.ui.SC;
-  ok(SC && SC.codigo && SC.codigo.length === 5, "código de sala com 5 chars");
+  ok(SC && /^[0-9]{4}$/.test(SC.codigo || ""), "código de sala com 4 dígitos, só número, veio: " + (SC && SC.codigo));
   const codigo = SC.codigo;
 
   // 2. B e C entram (cliente direto, sandbox próprio p/ localStorage isolado)

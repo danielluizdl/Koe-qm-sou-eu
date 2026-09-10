@@ -506,15 +506,6 @@
       <div class="stack" id="mesa-nomes-list" style="gap:8px"></div>
     </div>
 
-    <div class="stack" id="create-codigo" hidden>
-      <h2>Código da sala</h2>
-      <p class="note">Até 5 caracteres para a mesa ditar em voz alta. Deixe em branco para sortear.</p>
-      <input id="create-code-input" class="field mono" maxlength="5" inputmode="text"
-             autocomplete="off" autocorrect="off" spellcheck="false" autocapitalize="characters"
-             placeholder="sortear" aria-label="Código da sala, até 5 caracteres">
-      <p class="err" id="create-code-err" role="status"></p>
-    </div>
-
     <div class="foot">
       <p class="tally" id="create-tally" role="status"></p>
       <button class="btn" id="do-create">Gerar código</button>
@@ -1638,15 +1629,19 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   function normNick(s){ return String(s == null ? "" : s).replace(/^\s+|\s+$/g, ""); }
   function nickValido(s){ s = normNick(s); return s.length >= 1 && s.length <= 14; }
 
+  /* Código da sala online: 4 dígitos, só números — nada de letra
+     misturada, pra não confundir com o código de 7 do clássico nem
+     com o de 5 da mesa (tamanhos diferentes, sem ambiguidade). */
+  var TAM_CODIGO_SALA = 4;
   function normCodigo(s){
-    s = String(s == null ? "" : s).toUpperCase();
+    s = String(s == null ? "" : s);
     var out = "";
-    for (var i = 0; i < s.length; i++) if (A32.indexOf(s.charAt(i)) >= 0) out += s.charAt(i);
-    return out.slice(0, 5);
+    for (var i = 0; i < s.length; i++) if (s.charAt(i) >= "0" && s.charAt(i) <= "9") out += s.charAt(i);
+    return out.slice(0, TAM_CODIGO_SALA);
   }
   function codigoAleatorio(){
-    var s = "";
-    for (var i = 0; i < 5; i++) s += A32.charAt(Math.floor(Math.random() * 32));
+    var s = String(Math.floor(Math.random() * Math.pow(10, TAM_CODIGO_SALA)));
+    while (s.length < TAM_CODIGO_SALA) s = "0" + s;
     return s;
   }
 
@@ -3080,7 +3075,6 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     criarModo = "offline";
     escondeMesaNoCreate();
     $("create-pessoas").hidden = false;
-    $("create-codigo").hidden = true;
     $("do-create").textContent = "Gerar código";
     $("create-back").setAttribute("data-back", "s-home");
     updateTally();
@@ -3089,9 +3083,6 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     criarModo = "online";
     escondeMesaNoCreate();
     $("create-pessoas").hidden = true;
-    $("create-codigo").hidden = false;
-    $("create-code-input").value = "";
-    $("create-code-err").textContent = "";
     $("do-create").textContent = "Criar sala";
     $("create-back").setAttribute("data-back", "s-nick");
     updateTally();
@@ -3100,7 +3091,6 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     criarModo = "reconfig";
     escondeMesaNoCreate();
     $("create-pessoas").hidden = true;
-    $("create-codigo").hidden = true;
     $("do-create").textContent = "Salvar";
     $("create-back").setAttribute("data-back", reconfigVoltar);
     updateTally();
@@ -3170,27 +3160,16 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   }
 
   function criarSalaOnline(){
-    var digitado = $("create-code-input").value;
-    var codigo = normCodigo(digitado);
-    if (digitado && !codigo){ $("create-code-err").textContent = "Só letras e números — nada de O, I, 0 ou 1 (confundem quando alguém dita)."; return; }
-    if (digitado && codigo.length < 2){ $("create-code-err").textContent = "O código precisa de 2 a 5 caracteres."; return; }
     if (draft.mask === 0) return;
     $("do-create").disabled = true;
-    $("create-code-err").textContent = "";
     var nick = novoNick || ultimoNick();
     novaSalaCliente();
-    SC.criar(codigo, nick, draft.mask, draft.nivel).then(function(){
+    SC.criar("", nick, draft.mask, draft.nivel).then(function(){
       $("do-create").disabled = false;
-    }, function(e){
+    }, function(){
       $("do-create").disabled = false;
-      if (e && e.motivo === "existe" && codigo){
-        SC = null;
-        toast("A sala " + codigo + " já existe — entrando nela.");
-        entrarComCodigo(codigo);
-      } else {
-        SC = null;
-        $("create-code-err").textContent = "Não deu para criar a sala. Tente outro código.";
-      }
+      SC = null;
+      toast("Não deu para criar a sala. Tente de novo.");
     });
   }
 
@@ -3696,11 +3675,6 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   $("entrar-input").addEventListener("keydown", function(e){
     if (e.key === "Enter") entrarComCodigo($("entrar-input").value);
   });
-  $("create-code-input").addEventListener("input", function(){
-    var s = normCodigo($("create-code-input").value);
-    if (s !== $("create-code-input").value) $("create-code-input").value = s;
-    $("create-code-err").textContent = "";
-  });
 
   $("lobby-sair").addEventListener("click", sairDaSala);
   $("lobby-share").addEventListener("click", compartilharSala);
@@ -4094,7 +4068,6 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     $("create-temas").hidden = false;
     $("create-pessoas").hidden = false;
     $("create-nomes").hidden = false;
-    $("create-codigo").hidden = true;
     $("create-back").setAttribute("data-back", "s-home");
     $("do-create").textContent = "Criar convite";
     pintarTemas();
