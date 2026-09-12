@@ -3797,9 +3797,9 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       if (entrando){ $("senha-input").value = ""; $("senha-err").textContent = ""; }
     }
     $("play-mesa-sec").hidden = !mesaLiberada;
-    // O bloco de notas é pessoal: aparece assim que você está jogando (participante),
-    // sem esperar todo mundo revelar a carta — só a mesa dos adversários segue o mesaLiberada.
-    $("play-notas-sec").hidden = espectador;
+    // O bloco de notas é pessoal: aparece sempre na tela de jogo, sem esperar
+    // todo mundo revelar a carta — só a mesa dos adversários segue o mesaLiberada.
+    $("play-notas-sec").hidden = false;
     var mesaEsc = mesaEscondida(v.codigo);
     $("play-oponentes").hidden = mesaEsc;
     $("play-mesa-toggle").textContent = mesaEsc ? "Mostrar" : "Esconder";
