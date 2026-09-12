@@ -262,8 +262,9 @@ async function main() {
   click("play-mesa-toggle");
   ok(g("play-oponentes").hidden === false, "clicar de novo mostra de novo");
 
-  // C7.2: anotações maiores (estático, essa DOM simulada não lê atributos por getAttribute)
-  ok(/id="play-notas"[^>]*rows="6"/.test(headHtml), "anotações com rows=6 (era 3)");
+  // C7.2: anotações começam pequenas e crescem sozinhas (auto-grow via JS)
+  ok(/id="play-notas"[^>]*rows="3"/.test(headHtml), "anotações começam com rows=3");
+  ok(/id="play-notas"[^>]*class="[^"]*\bnotas\b/.test(headHtml), "textarea tem a classe notas (auto-grow)");
 
   // C7.3: relógio soma tempo de verdade desde que a fase virou "jogando"
   ok(A.ui.SC.vm().iniciadaEm > 0, "sala.iniciadaEm gravado na virada pra jogando");
