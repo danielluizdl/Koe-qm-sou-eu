@@ -484,6 +484,40 @@ async function cenarioAusenteNaoTrava() {
   devices.forEach(d => d.client.sair());
 }
 
+async function cenarioRemoverBugado() {
+  // 4 começam; 1 "buga" e não revela -> fase trava em "revelando".
+  // O host tira o bugado da partida e o jogo destrava e termina.
+  const { devices } = await novaSala(4, T0Mask(), 0);
+  const host = devices[0].client;
+  await host.comecar();
+  await settle();
+  const bugado = host.vm().membros[3].id;
+  for (let i = 0; i < 3; i++) { await devices[i].client.esconder(); await settle(); }
+  ok(host.vm().fase === "revelando", "trava em 'revelando' esperando o bugado que não revelou");
+  await host.removerDaPartida(bugado);
+  await settle();
+  ok(!devices[3].client.vm().souParticipante, "bugado deixou de ser participante");
+  ok(host.vm().fase === "jogando", "removido o bugado, a fase destrava pra 'jogando'");
+  for (let i = 2; i >= 0; i--) { await devices[i].client.palpite(devices[i].client.vm().minhaCarta); await settle(); }
+  ok(host.vm().fase === "fim", "partida termina só com os 3 que ficaram");
+  ok(host.vm().partidas[0].quantos === 3, "histórico registra os 3 que jogaram");
+  devices.forEach(d => d.client.sair());
+
+  // Segurança + expulsar: só o host remove; expulsar apaga o doc do jogador.
+  const { devices: d2 } = await novaSala(3, T0Mask(), 0);
+  const h2 = d2[0].client;
+  await h2.comecar(); await settle();
+  const alvo = h2.vm().membros[2].id;
+  await d2[1].client.removerDaPartida(alvo);   // P2 (não-host) tenta remover P3
+  await settle();
+  ok(h2.vm().numParticipantes === 3, "não-host não consegue remover (segue 3)");
+  await h2.expulsar(alvo);
+  await settle();
+  ok(h2.vm().membros.length === 2, "expulso sai do roster (doc apagado)");
+  ok(d2[2].client.vm().fuiRemovido === true, "aparelho do expulso detecta que foi removido");
+  d2.forEach(d => d.client.sair());
+}
+
 async function cenarioEntrouNoMeio() {
   const { devices, codigo } = await novaSala(3, T0Mask(), 0);
   const host = devices[0].client;
@@ -726,6 +760,7 @@ async function main() {
     ["código digitado que já existe não sobrescreve", cenarioCodigoDigitadoExistente],
     ["nick repetido recusado", cenarioNickRepetido],
     ["membro desmarcado não trava a partida", cenarioAusenteNaoTrava],
+    ["host remove jogador bugado no meio (destrava e termina)", cenarioRemoverBugado],
     ["quem entra no meio fica de fora da partida", cenarioEntrouNoMeio],
     ["reload no meio devolve o mesmo estado", cenarioReloadNoMeio],
     ["apagar sala remove sala + jogadores + histórico", cenarioApagar],

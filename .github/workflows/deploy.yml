@@ -1,0 +1,37 @@
+name: Deploy Hosting
+
+# Publica o site no Firebase Hosting automaticamente:
+#  - quando algo entra na main (merge de PR), ou
+#  - manualmente pelo botão "Run workflow" na aba Actions.
+# Roda tudo nos servidores do GitHub — não precisa de terminal no seu aparelho.
+#
+# Pré-requisito (uma vez só): criar o secret FIREBASE_SERVICE_ACCOUNT no repo
+# (Settings → Secrets and variables → Actions) com o JSON da chave de serviço
+# do Firebase (Project Settings → Service accounts → Generate new private key).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Gera a pasta public/ (build.js usa só módulos nativos — sem npm install).
+      - name: Build
+        run: node build.js
+
+      - name: Deploy para o Firebase Hosting (canal live)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: quem-sou-eu-e3e32
+          channelId: live

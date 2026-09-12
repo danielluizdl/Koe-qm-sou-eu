@@ -328,6 +328,21 @@
   .senha .olho[aria-pressed="true"] .cortado{display:block}
   .senha .olho[aria-pressed="true"] .aberto{display:none}
   textarea.field{min-height:96px;padding:12px 16px;font-weight:500;font-size:1rem;line-height:1.45;resize:vertical}
+  /* Anotações: cresce sozinho com o conteúdo (JS ajusta a altura). Teto em vh
+     pra não empurrar o resto pra fora; passando disso, rola dentro da caixa.
+     "Expandir" (.big) sobe o teto pra sessões de muita escrita. */
+  textarea.notas{min-height:84px;max-height:48vh;overflow-y:auto;resize:none;transition:max-height .18s ease}
+  textarea.notas.big{max-height:78vh}
+  /* Painel de ação (remover jogador). */
+  /* z-index alto; a regra global do hidden esconde o painel quando fechado. */
+  .sheet{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-end;justify-content:center;
+    background:rgba(0,0,0,.5);padding:16px;padding-bottom:calc(env(safe-area-inset-bottom) + 16px)}
+  .sheet-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+    box-shadow:0 12px 40px var(--shadow);padding:18px;width:100%;max-width:420px;
+    display:flex;flex-direction:column;gap:10px}
+  .sheet-title{margin:0;font-weight:800;text-align:center;font-size:1.05rem}
+  .row .remover{flex:0 0 auto;border:1px solid var(--line);background:transparent;color:var(--ink-2);
+    border-radius:999px;padding:6px 12px;font-size:.78rem;font-weight:700;cursor:pointer;min-height:34px}
   .rows{display:flex;flex-direction:column;gap:8px}
   .rows:empty{display:none}
   .row{
@@ -732,9 +747,13 @@
       <div class="rows" id="play-oponentes"></div>
     </div>
     <div class="stack" id="play-notas-sec" style="gap:10px">
-      <p class="eyebrow">Suas anotações</p>
-      <textarea id="play-notas" class="field" rows="6" style="flex:1"
-                placeholder="dicas que te deram, palpites…" aria-label="Anotações"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <p class="eyebrow" style="margin:0">Suas anotações</p>
+        <button type="button" class="tag" id="play-notas-expandir" aria-pressed="false">Expandir</button>
+      </div>
+      <textarea id="play-notas" class="field notas" rows="3"
+                placeholder="dicas que te deram, palpites… dá enter pra pular linha e a caixa cresce"
+                aria-label="Anotações"></textarea>
     </div>
     <div class="stack" id="play-placar-sec" style="gap:10px">
       <p class="eyebrow">Placar</p>
@@ -950,6 +969,18 @@
 </div>
 
 <div class="toast" id="toast" role="status"></div>
+
+<!-- Painel do host pra remover um jogador (fica fora da tela que repinta,
+     pra não sumir a cada atualização da sala). -->
+<div class="sheet" id="acao-jogador" hidden>
+  <div class="sheet-card">
+    <p class="sheet-title" id="acao-jogador-nome"></p>
+    <p class="note" style="text-align:center">O que fazer com esse jogador?</p>
+    <button class="btn" id="acao-tirar">Só desta partida</button>
+    <button class="btn ghost" id="acao-expulsar">Expulsar da sala</button>
+    <button class="linkbtn" id="acao-cancelar">Cancelar</button>
+  </div>
+</div>
 
 <script>
 /* ============================================================
@@ -1731,10 +1762,14 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     if (telaVisivel() !== "s-play" || !SC || !SC.ativo){ pararPlayClock(); return; }
     var v = SC.vm();
     var el = $("play-clock");
-    if (!v.iniciadaEm){ el.hidden = true; return; }
+    /* o relógio começa a contar já na revelação (partidaCriadaEm); só cai pro
+       iniciadaEm quando ele existir. Assim aparece mesmo se a fase travar em
+       "revelando" porque alguém bugou e não mostrou a carta. */
+    var base = v.iniciadaEm || v.criadaEm;
+    if (!base){ el.hidden = true; return; }
     el.hidden = false;
     var fim = v.jaAcertei ? v.meuAcertouEm : agora();
-    el.textContent = fmtTempo(fim - v.iniciadaEm);
+    el.textContent = fmtTempo(fim - base);
   }
 
   /* ============================================================
@@ -1877,7 +1912,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     var C = {
       db: db, codigo: "", meuId: "", meuNick: "",
       sala: null, jogadores: [], hist: null,
-      pronto: false, ativo: false,
+      pronto: false, ativo: false, _existiu: false,
       _unsub: [], _ouvintes: [], _membros: [],
       _avancando: false, _gravando: false, _hb: null
     };
@@ -1912,6 +1947,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
         var arr = [];
         for (var i = 0; i < qs.docs.length; i++) if (qs.docs[i].exists) arr.push(qs.docs[i].data());
         C.jogadores = arr;
+        if (meu()) C._existiu = true;   // marca que eu já tive doc; se sumir depois, fui expulso
         avaliarFase();
         emitir();
       }, function(){ emitir(); }));
@@ -2058,6 +2094,33 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       if (ligado && pos < 0) atual.push(id);
       if (!ligado && pos >= 0) atual.splice(pos, 1);
       return refSala().update({ participantes: atual });
+    };
+
+    /* Remover no meio da partida: quando alguém buga e o jogo não fecha porque
+       fica esperando por ela. Tira o pid de `participantes` — o avanço de fase
+       (todos()) para de esperar e a partida consegue terminar. A pessoa vira
+       espectadora, mas continua na sala pra próxima rodada. Só o host, e nunca
+       o próprio host. */
+    C.removerDaPartida = function(id){
+      if (!ehHost() || !id) return resolver();
+      if (id === (C.sala && C.sala.hostId)) return resolver();
+      var atual = participantesAtuais().slice(), pos = idx(atual, id);
+      if (pos < 0) return resolver();
+      atual.splice(pos, 1);
+      return refSala().update({ participantes: atual });
+    };
+
+    /* Expulsar de vez: sai de `participantes` E apaga o doc do jogador
+       (a regra já deixa o host apagar). O aparelho dela detecta que sumiu da
+       lista (v.fuiRemovido) e volta pra Home. */
+    C.expulsar = function(id){
+      if (!ehHost() || !id) return resolver();
+      if (id === (C.sala && C.sala.hostId)) return resolver();
+      var atual = participantesAtuais().slice(), pos = idx(atual, id);
+      if (pos >= 0) atual.splice(pos, 1);
+      return refSala().update({ participantes: atual }).then(function(){
+        return refJogador(id).delete();
+      });
     };
 
     C.comecar = function(mask, nivel){
@@ -2282,6 +2345,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
         mask: (C.sala && !apagada && C.sala.mask != null) ? C.sala.mask : draft.mask,
         nivel: (C.sala && !apagada && C.sala.nivel != null) ? C.sala.nivel : draft.nivel,
         iniciadaEm: (C.sala && !apagada && C.sala.iniciadaEm) || null,
+        criadaEm: (C.sala && !apagada && C.sala.partidaCriadaEm) || null,
         pid: (C.sala && !apagada && C.sala.partidaId) || null,
         nomeSala: (C.sala && !apagada && C.sala.nome) || C.nomeSala || ""
       };
@@ -2304,6 +2368,11 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       }
       v.souParticipante = !!pset[C.meuId];
       var eu = meu();
+      /* Se eu já tive um doc de jogador e ele sumiu (host me expulsou), marca
+         pra UI me mandar pra Home. Guardo _existiu pra não confundir com o
+         instante inicial, antes do meu doc sincronizar. */
+      if (eu) C._existiu = true;
+      v.fuiRemovido = !!(C.pronto && C._existiu && !eu && !apagada && C.meuId);
       v.minhaCarta = eu ? eu.carta : null;
       v.jaEscondi = !!(eu && eu.revelou);
       v.jaAcertei = !!(eu && eu.acertouEm);
@@ -3572,6 +3641,13 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       show("s-home"); pintarHome();
       return;
     }
+    if (v.fuiRemovido){
+      SC.sair(); SC = null; telaSala = null; histAberto = false; apagarArmado = false;
+      pausaPassar = false; modoAtivo = null;
+      toast("O host removeu você da sala.");
+      show("s-home"); pintarHome();
+      return;
+    }
     if (pausaPassar && telaVisivel() === "s-passar") return;   // buffer "vire o celular"
     var alvo = telaDaVm(v);
     if (!alvo) return;
@@ -3796,8 +3872,13 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       $("play-senha").hidden = false; $("play-jaera").hidden = true;
       if (entrando){ $("senha-input").value = ""; $("senha-err").textContent = ""; }
     }
-    $("play-mesa-sec").hidden = !mesaLiberada;
-    $("play-notas-sec").hidden = !mesaLiberada;
+    // A mesa dos adversários só abre pra todo mundo depois que todos revelam.
+    // Exceção: o HOST vê a lista já na revelação pra poder remover quem bugou —
+    // mas SEM as cartas (mascaradas abaixo), pra não ganhar vantagem.
+    $("play-mesa-sec").hidden = !(mesaLiberada || v.souHost);
+    // O bloco de notas é pessoal: aparece sempre na tela de jogo, sem esperar
+    // todo mundo revelar a carta — só a mesa dos adversários segue o mesaLiberada.
+    $("play-notas-sec").hidden = false;
     var mesaEsc = mesaEscondida(v.codigo);
     $("play-oponentes").hidden = mesaEsc;
     $("play-mesa-toggle").textContent = mesaEsc ? "Mostrar" : "Esconder";
@@ -3806,11 +3887,17 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     for (var i = 0; i < v.membros.length; i++){
       var m = v.membros[i];
       if (!m.participante || m.souEu) continue;
-      var sub = m.carta ? m.carta : (m.revelou ? "(mostrou)" : "ainda não mostrou");
-      var tempo = (m.acertou && v.iniciadaEm && m.acertouEm) ? fmtTempo(m.acertouEm - v.iniciadaEm) : "";
+      // Enquanto a mesa não liberou (revelando), não vaza carta nem pro host:
+      // só o status. A carta de verdade aparece quando todos revelarem.
+      var sub = (mesaLiberada && m.carta) ? m.carta : (m.revelou ? "(mostrou)" : "ainda não mostrou");
+      var base = v.iniciadaEm || v.criadaEm;
+      var tempo = (m.acertou && base && m.acertouEm) ? fmtTempo(m.acertouEm - base) : "";
+      var remover = v.souHost ? '<button type="button" class="remover" data-id="' + esc(m.id) +
+        '" data-nick="' + esc(m.nick) + '">Remover</button>' : '';
       op.innerHTML += '<div class="row' + (m.acertou ? " win" : "") + '"><span class="grow"><b>' + esc(m.nick) +
         '</b><span class="sub">' + esc(sub) + '</span></span>' +
-        (m.acertou ? '<span class="pos done">' + m.posicao + 'º' + (tempo ? " · " + tempo : "") + '</span>' : '') + '</div>';
+        (m.acertou ? '<span class="pos done">' + m.posicao + 'º' + (tempo ? " · " + tempo : "") + '</span>' : '') +
+        remover + '</div>';
     }
     var pl = $("play-placar"); pl.innerHTML = "";
     for (var k = 0; k < v.placar.length; k++){
@@ -3822,12 +3909,26 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     if (entrando) carregarNotas(v);
   }
 
+  function autoGrowNotas(){
+    var ta = $("play-notas");
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = ta.scrollHeight + "px";   // o max-height do CSS segura o teto; passando disso, rola dentro
+  }
   function carregarNotas(v){
     var ta = $("play-notas");
+    /* Nunca atropela o que a pessoa está digitando: se o campo está com foco,
+       deixa quieto. Isso mata o "apagou o que escrevi" quando a tela repinta. */
+    if (document.activeElement === ta) return;
+    var salvo;
     try {
-      ta.value = (v.modo === "mesa" && MESA) ? MESA.lerNotas()
+      salvo = (v.modo === "mesa" && MESA) ? MESA.lerNotas()
         : (localStorage.getItem(notasKey(v.codigo, v.meuId)) || "");
-    } catch(e){ ta.value = ""; }
+    } catch(e){ salvo = ""; }
+    /* Só sobrescreve se o texto atual não for justamente o que já está salvo —
+       e nunca troca conteúdo digitado por vazio. */
+    if (ta.value !== salvo && !(ta.value && !salvo)) ta.value = salvo;
+    autoGrowNotas();
   }
 
   function pintarFim(v, entrando){
@@ -3947,14 +4048,55 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     $("play-mesa-toggle").setAttribute("aria-pressed", novo ? "true" : "false");
   });
   $("play-notas").addEventListener("input", function(){
-    clearTimeout(notasT);
+    autoGrowNotas();
     var val = $("play-notas").value;
-    notasT = setTimeout(function(){
-      try {
-        if (modoAtivo === "mesa" && MESA) MESA.salvarNotas(val);
-        else if (SC && SC.ativo) localStorage.setItem(notasKey(SC.codigo, SC.meuId), val);
-      } catch(e){}
-    }, 400);
+    /* localStorage é barato: grava JÁ a cada tecla, pra nunca perder o texto.
+       Só o modo mesa (que escreve no Firestore) fica no debounce. */
+    if (!(modoAtivo === "mesa" && MESA)){
+      try { if (SC && SC.ativo) localStorage.setItem(notasKey(SC.codigo, SC.meuId), val); } catch(e){}
+      return;
+    }
+    clearTimeout(notasT);
+    notasT = setTimeout(function(){ try { MESA.salvarNotas(val); } catch(e){} }, 400);
+  });
+  $("play-notas-expandir").addEventListener("click", function(){
+    var ta = $("play-notas"), b = this;
+    var grande = ta.classList.toggle("big");
+    b.textContent = grande ? "Recolher" : "Expandir";
+    b.setAttribute("aria-pressed", grande ? "true" : "false");
+    autoGrowNotas();
+    if (grande) ta.focus();
+  });
+
+  /* Host remove jogador: o botão "Remover" na linha do oponente abre o painel
+     com as duas opções. Delegação, porque a lista é repintada a cada snapshot. */
+  var alvoRemover = null;
+  function fecharAcaoJogador(){ alvoRemover = null; $("acao-jogador").hidden = true; }
+  function abrirAcaoJogador(id, nick){
+    alvoRemover = id;
+    $("acao-jogador-nome").textContent = nick || "Jogador";
+    $("acao-jogador").hidden = false;
+  }
+  $("play-oponentes").addEventListener("click", function(e){
+    var b = e.target.closest && e.target.closest(".remover");
+    if (!b) return;
+    abrirAcaoJogador(b.getAttribute("data-id"), b.getAttribute("data-nick"));
+  });
+  $("acao-cancelar").addEventListener("click", fecharAcaoJogador);
+  $("acao-jogador").addEventListener("click", function(e){
+    if (e.target === this) fecharAcaoJogador();   // toque no fundo fecha
+  });
+  $("acao-tirar").addEventListener("click", function(){
+    var id = alvoRemover; fecharAcaoJogador();
+    if (id && SC && SC.ativo) SC.removerDaPartida(id).then(function(){
+      toast("Tirado da partida. Ela já pode terminar.");
+    }, function(){ toast("Não consegui remover agora."); });
+  });
+  $("acao-expulsar").addEventListener("click", function(){
+    var id = alvoRemover; fecharAcaoJogador();
+    if (id && SC && SC.ativo) SC.expulsar(id).then(function(){
+      toast("Jogador expulso da sala.");
+    }, function(){ toast("Não consegui expulsar agora."); });
   });
 
   $("fim-sair").addEventListener("click", function(){
