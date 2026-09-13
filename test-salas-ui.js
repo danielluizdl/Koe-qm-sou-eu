@@ -224,7 +224,7 @@ async function main() {
   ok(SC && /^[0-9]{4}$/.test(SC.codigo || ""), "código de sala com 4 dígitos, só número, veio: " + (SC && SC.codigo));
   const codigo = SC.codigo;
   ok(g("lobby-code").textContent === codigo, "o código aparece grande e sozinho no lobby (sem 'sala '), veio: " + g("lobby-code").textContent);
-  ok(g("lobby-nome").textContent === "Churrasco de Domingo", "o nome da sala aparece de destaque no lobby, veio: " + g("lobby-nome").textContent);
+  ok(g("lobby-nome").textContent === "Churrasco de Domingo ✎", "o nome da sala aparece de destaque no lobby, com dica de editar pro host, veio: " + g("lobby-nome").textContent);
   ok(A.ui.SC.vm().nomeSala === "Churrasco de Domingo", "vm expõe o nome da sala");
 
   // 2. B e C entram (cliente direto, sandbox próprio p/ localStorage isolado)
@@ -370,11 +370,14 @@ async function main() {
   click("hist-voltar");
   ok(tela() === "s-fim", "voltar do histórico volta pro fim");
 
-  // C8: avaliação de dificuldade é obrigatória antes de sair do fim —
-  // "jogar de novo" é uma das duas saídas que o dono confirmou que trava.
-  click("fim-denovo");
+  // C8/C3+C4: avaliação de dificuldade é obrigatória antes da sala seguir
+  // — cascata: host avalia por toque em "fim-avaliar" (chegou ao fim sem
+  // ter avaliado ainda), depois confirma "pronto"; só quando TODOS (host
+  // incluso) confirmarem é que a sala avança sozinha pro lobby.
+  ok(g("fim-avaliar").hidden === false, "sem avaliar ainda, botão de avaliar aparece no fim");
+  click("fim-avaliar");
   await settle();
-  ok(tela() === "s-avaliar", "sem avaliar ainda, jogar de novo pára na tela de avaliação, foi pra " + tela());
+  ok(tela() === "s-avaliar", "toca em avaliar, foi pra " + tela());
   const linhas = A.ui.avaliarLinhas;
   ok(linhas.length === 3, "uma linha por carta em jogo (host, Bia, Cau), veio " + linhas.length);
   ok(g("avaliar-ok").disabled === true, "botão trava até avaliar todas");
@@ -387,10 +390,10 @@ async function main() {
   ok(tela() === "s-avaliar", "um snapshot no meio da avaliação não te tira da tela, foi pra " + tela());
   ok(A.ui.avaliarLinhas === linhas, "as linhas da avaliação não são reconstruídas à toa por causa do snapshot");
 
-  linhas[0].input.value = "0"; linhas[0].input._fire("input");
+  linhas[0].botoes[0]._fire("click");
   ok(g("avaliar-ok").disabled === true, "ainda faltam duas");
-  linhas[1].input.value = "3"; linhas[1].input._fire("input");
-  linhas[2].input.value = "5"; linhas[2].input._fire("input");
+  linhas[1].botoes[3]._fire("click");
+  linhas[2].botoes[5]._fire("click");
   ok(g("avaliar-ok").disabled === false, "todas tocadas, libera o botão");
 
   // simula a Bia chegando ao fim desta partida marcada como pronta (de uma
@@ -400,7 +403,24 @@ async function main() {
 
   click("avaliar-ok");
   await settle();
-  ok(tela() === "s-lobby", "avaliação feita: agora sim vai pro lobby, foi pra " + tela());
+  ok(tela() === "s-fim", "avaliação feita: volta pro fim, ainda esperando os outros confirmarem, foi pra " + tela());
+  ok(g("fim-pronto").hidden === false && g("fim-pronto").textContent === "Pronto para a próxima partida",
+     "botão de pronto aparece depois de avaliar, veio: " + g("fim-pronto").textContent);
+
+  // host confirma "pronto"; Bia e Cau ainda não — sala não avança sozinha.
+  click("fim-pronto");
+  await settle();
+  ok(g("fim-pronto").textContent.indexOf("Aguardando os outros (1 de 3)") === 0,
+     "contador de prontidão inclui o host, veio: " + g("fim-pronto").textContent);
+  ok(tela() === "s-fim", "com Bia e Cau faltando, a sala não avança sozinha");
+  ok(g("fim-forcar").hidden === false, "override do host aparece depois que ELE avaliou (não antes)");
+
+  // Bia e Cau confirmam prontidão direto (clientes fora da UI) — só falta
+  // isso pra transição fim->lobby disparar sozinha (avaliarFase).
+  await cb.marcarProntoProxima(true);
+  await cc.marcarProntoProxima(true);
+  await settle();
+  ok(tela() === "s-lobby", "todos prontos: sala avança sozinha pro lobby, sem clicar em nada, foi pra " + tela());
   const dump = DB._dump();
   const slugsCarta = Object.keys(dump).filter(k => /^cartas\/[^/]+$/.test(k));
   const votos = Object.keys(dump).filter(k => /^cartas\/[^/]+\/votos\/[^/]+$/.test(k));
@@ -412,11 +432,11 @@ async function main() {
   ok(dump[slugBia].contagem === 5 && dump[slugBia].soma === 15,
      "o agregado semeado da Bia soma em cima do que já tinha (4 -> 5 votos), veio: " + JSON.stringify(dump[slugBia]));
 
-  // 7. jogar de novo — de verdade, até o fim, pra pegar os dois bugs
-  // reportados: "jogar de novo" ficando apagado pra sempre depois da 1ª
-  // partida, e a avaliação deixando de ser cobrada na 2ª.
+  // 7. jogar de novo — de verdade, até o fim, pra pegar os bugs
+  // reportados: prontidão/avaliação não resetando entre partidas.
   ok(A.ui.SC.vm().minhaCarta == null, "carta zerada ao voltar pro lobby");
-  ok(A.ui.SC.vm().numProntos === 0, "prontidão reseta pra partida nova (era 1 de 2 antes)");
+  ok(A.ui.SC.vm().numProntos === 0, "prontidão do lobby reseta pra partida nova (era 1 de 2 antes)");
+  ok(A.ui.SC.vm().meuProntoProxima === false, "prontidão de 'próxima partida' também reseta");
   ok(g("lobby-comecar").disabled === false, "começar liberado de novo no lobby");
 
   click("lobby-comecar");
@@ -434,36 +454,53 @@ async function main() {
   const cartaHost2 = A.ui.SC.vm().minhaCarta;
   g("senha-input").value = cartaHost2;
   click("senha-ok");
-  await cb.palpite(cb.vm().minhaCarta);
-  await cc.palpite(cc.vm().minhaCarta);
   await settle();
-  ok(tela() === "s-fim", "2ª partida chega no fim de novo, foi pra " + tela());
-  ok(g("fim-denovo").hidden === false && g("fim-denovo").disabled === false,
-     "jogar de novo NÃO fica apagado na 2ª partida (bug reportado)");
-
-  click("fim-denovo");
+  // C3+C4: host acerta antes dos outros dois — não fica só esperando,
+  // já pode avaliar as cartas dessa rodada (fase ainda é "jogando").
+  ok(tela() === "s-play" && A.ui.SC.vm().jaAcertei === true, "host acerta primeiro, ainda em jogando");
+  ok(g("play-avaliar").hidden === false, "botão de avaliar aparece assim que acerta, mesmo sem os outros terem terminado");
+  click("play-avaliar");
   await settle();
-  ok(tela() === "s-avaliar", "2ª partida: avaliação obrigatória de novo, foi pra " + tela());
+  ok(tela() === "s-avaliar", "avaliação em cascata: abre por toque, não sozinha, foi pra " + tela());
   const linhas2 = A.ui.avaliarLinhas;
   ok(linhas2.length === 3 && linhas2 !== linhas, "linhas novas pra rodada nova, não as da partida passada");
-  linhas2.forEach(l => { l.input.value = "2"; l.input._fire("input"); });
+  linhas2.forEach(l => { l.botoes[2]._fire("click"); });
   ok(g("avaliar-ok").disabled === false, "libera de novo com todas tocadas");
   click("avaliar-ok");
   await settle();
-  ok(tela() === "s-lobby", "2ª avaliação feita: volta pro lobby de novo, foi pra " + tela());
+  ok(tela() === "s-play", "avaliado antes dos outros: volta pro play, ainda em jogando");
+  ok(g("play-pronto").hidden === false && g("play-pronto").textContent === "Pronto para a próxima partida",
+     "botão de pronto aparece em s-play depois de avaliar, veio: " + g("play-pronto").textContent);
+  click("play-pronto");
+  await settle();
+  ok(g("play-pronto").textContent.indexOf("Aguardando os outros") === 0, "host confirma pronto ainda em jogando");
+
+  await cb.palpite(cb.vm().minhaCarta);
+  await cc.palpite(cc.vm().minhaCarta);
+  await settle();
+  ok(tela() === "s-fim", "2ª partida chega no fim depois que os outros dois terminam, foi pra " + tela());
+  ok(g("fim-avaliar").hidden === true && g("fim-pronto").hidden === false,
+     "host já avaliou e confirmou antes do fim oficial: chega no fim direto no estado 'aguardando'");
+
+  await cb.marcarProntoProxima(true);
+  await cc.marcarProntoProxima(true);
+  await settle();
+  ok(tela() === "s-lobby", "2ª partida: todos prontos, sala avança sozinha de novo, foi pra " + tela());
 
   // bug real reportado: quem fecha o app entre o fim da partida e a
   // próxima nunca mais era perguntado, porque a avaliação só existia em
   // memória (esquecia assim que a página recarregava). Simula esse
   // esquecimento — localStorage sem o registro da 2ª partida, "reabri o
   // app antes de ter avaliado" — e confirma que o app força a avaliação
-  // de novo mesmo com a sala já de volta ao lobby (fase !== "fim").
+  // de novo mesmo com a sala já de volta ao lobby (fase !== "fim"). Esse
+  // caminho (hist-based, entre sessões) continua intacto — não é o mesmo
+  // usado durante a partida em si (esse usa v.pid direto, testado acima).
   A.mem.delete("quemsoueu:avaliado:" + codigo);
   A.ui.renderSala();
   await settle();
   ok(tela() === "s-avaliar", "reconectar sem ter avaliado força a avaliação de novo, foi pra " + tela());
   ok(A.ui.avaliarLinhas.length === 3, "as mesmas 3 cartas da partida que ficou pra trás");
-  A.ui.avaliarLinhas.forEach(l => { l.input.value = "1"; l.input._fire("input"); });
+  A.ui.avaliarLinhas.forEach(l => { l.botoes[1]._fire("click"); });
   click("avaliar-ok");
   await settle();
   ok(tela() === "s-lobby", "avaliada nesse reencontro, volta a seguir a sala normalmente, foi pra " + tela());
@@ -558,6 +595,42 @@ async function main() {
   mc("play-r-plus");
   ok(mTela() === "s-carta" && MZ.ui.MESA.rodada === 2, "mesa: próxima rodada volta pra carta nova");
   ok(MZ.ui.MESA.minhaCarta() !== cartaDani, "mesa: rodada 2 = carta diferente");
+
+  // 11. C1: confirmar (2 toques) antes de sair de uma partida em andamento
+  // (reaproveita o DB global — settle() só drena a fila desse DB)
+  intervals = [];
+  const CF = makeApp(DB, true);
+  await tick(); await tick();
+  const cg = id => CF.dom.document.getElementById(id);
+  const cclick = id => cg(id)._fire("click");
+  const cfTela = () => CF.ui.telaVisivel();
+  const criarSalaCF = async () => {
+    cclick("go-create");
+    if (cfTela() === "s-nick"){ cg("nick-input").value = "Leo"; cclick("nick-ok"); }
+    cclick("do-create");
+    await settle();
+  };
+  await criarSalaCF();
+  ok(cfTela() === "s-lobby", "C1: sala criada, foi pra " + cfTela());
+  cclick("lobby-sair");
+  ok(cfTela() === "s-home", "C1: sair do lobby NÃO pede confirmação (1 toque já sai)");
+
+  await criarSalaCF();
+  const codigoCF = CF.ui.SC.codigo;
+  const guestCF = CF.T.CriarSalaCliente(DB);
+  await guestCF.abrir(codigoCF); await guestCF.entrarNovo("Mia"); await settle();
+  cclick("lobby-comecar");
+  await settle();
+  ok(cfTela() === "s-carta", "C1: com 2 pessoas, a sala começa normalmente");
+  cclick("carta-sair");
+  ok(cg("carta-sair").textContent.indexOf("Sair mesmo?") === 0,
+     "C1: 1º toque arma a confirmação em partida ativa (revelando), veio: " + cg("carta-sair").textContent);
+  ok(cfTela() === "s-carta", "C1: continua na partida depois do 1º toque (não saiu ainda)");
+  ok(CF.ui.SC && CF.ui.SC.ativo, "C1: sala continua ativa depois do 1º toque");
+  cclick("carta-sair");
+  await settle();
+  ok(cfTela() === "s-home", "C1: 2º toque de fato sai, foi pra " + cfTela());
+  guestCF.sair();
 
   console.log("\n" + (fails ? fails + " falha(s)" : "fumaça da UI passou"));
   process.exit(fails ? 1 : 0);

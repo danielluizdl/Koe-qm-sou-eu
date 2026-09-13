@@ -599,6 +599,76 @@ async function cenarioPalpiteCedo() {
   devices.forEach(d => d.client.sair());
 }
 
+async function cenarioProntoProximaAutomatico() {
+  const { devices, codigo } = await novaSala(3, T0Mask(), 0);
+  const host = devices[0].client, p2 = devices[1].client, p3 = devices[2].client;
+  await host.comecar();
+  await settle();
+  for (let i = 0; i < 3; i++) { await devices[i].client.esconder(); await settle(); }
+
+  // host acerta antes dos outros dois: já pode confirmar prontidão, mesmo
+  // com a fase ainda "jogando" (C3+C4 — avaliação/prontidão em cascata).
+  await host.palpite(host.vm().minhaCarta); await settle();
+  ok(host.vm().fase === "jogando", "ainda jogando: só o host acertou");
+  ok(host.vm().meuProntoProxima === false, "prontoProxima começa falso");
+  await p2.marcarProntoProxima(true);   // no-op: P2 ainda não acertou, guarda em C.marcarProntoProxima
+  await settle();
+  ok(p2.vm().meuProntoProxima === false, "quem não acertou ainda não consegue confirmar prontidão");
+
+  await host.marcarProntoProxima(true);
+  await settle();
+  ok(host.vm().meuProntoProxima === true, "host confirma prontidão em pleno jogando");
+  ok(host.vm().fase === "jogando", "sala não avança sozinha com 2 faltando acertar");
+
+  // desfazer prontidão (achado de revisão de design: erro de toque)
+  await host.marcarProntoProxima(false);
+  await settle();
+  ok(host.vm().meuProntoProxima === false, "desfazer prontidão funciona");
+  await host.marcarProntoProxima(true);
+  await settle();
+
+  await p2.palpite(p2.vm().minhaCarta); await p3.palpite(p3.vm().minhaCarta); await settle();
+  ok(host.vm().fase === "fim", "todos acertaram: fase vira fim");
+  ok(host.vm().numProntosProxima === 1, "só o host confirmou até aqui, veio " + host.vm().numProntosProxima);
+
+  // override do host: força pra lobby mesmo com os outros dois pendentes
+  // (achado convergente de 3 revisões independentes — sem isso, alguém
+  // que desconecta trava a sala pra sempre).
+  await host.jogarDeNovo();
+  await settle();
+  ok(host.vm().fase === "lobby", "override do host força a sala pro lobby mesmo sem todo mundo pronto");
+  ok(devices.every(d => d.client.vm().meuProntoProxima === false), "prontoProxima reseta pra todo mundo depois do override");
+
+  // 2ª partida: dessa vez ninguém força — todos confirmam de verdade.
+  await host.comecar(); await settle();
+  for (let i = 0; i < 3; i++) { await devices[i].client.esconder(); await settle(); }
+  for (let i = 0; i < 3; i++) { await devices[i].client.palpite(devices[i].client.vm().minhaCarta); await settle(); }
+  ok(host.vm().fase === "fim", "2ª partida chega ao fim");
+  await host.marcarProntoProxima(true); await settle();
+  ok(host.vm().fase === "fim", "1 de 3 (host incluso) pronto: sala não avança");
+  await p2.marcarProntoProxima(true); await settle();
+  ok(host.vm().fase === "fim", "2 de 3 prontos (falta P3): sala ainda não avança");
+  await p3.marcarProntoProxima(true); await settle();
+  ok(host.vm().fase === "lobby",
+     "3 de 3 prontos (host incluso): sala avança sozinha, sem ninguém clicar em 'jogar de novo'");
+
+  // espectador que entra no meio da 3ª partida não conta no gate nem
+  // precisa confirmar nada (participantesAtuais() já o exclui).
+  await host.comecar(); await settle();
+  const p4 = makeDevice(DB, "P4");
+  await p4.client.abrir(codigo);
+  await p4.client.entrarNovo("P4");
+  await settle();
+  ok(!p4.client.vm().souParticipante, "P4 entrou no meio, não é participante desta partida");
+  for (let i = 0; i < 3; i++) { await devices[i].client.esconder(); await settle(); }
+  for (let i = 0; i < 3; i++) { await devices[i].client.palpite(devices[i].client.vm().minhaCarta); await settle(); }
+  await host.marcarProntoProxima(true); await p2.marcarProntoProxima(true); await p3.marcarProntoProxima(true);
+  await settle();
+  ok(host.vm().fase === "lobby", "sala avança mesmo com P4 (espectador) nunca tendo confirmado nada");
+
+  devices.forEach(d => d.client.sair()); p4.client.sair();
+}
+
 async function cenarioReconfig() {
   const { devices } = await novaSala(3, T0Mask(), 0);
   const host = devices[0].client;
@@ -614,6 +684,32 @@ async function cenarioReconfig() {
   await host.comecar();
   await settle();
   ok(devices[0].client.vm().minhaCarta, "comecar usa a config reconfigurada sem erro");
+  devices.forEach(d => d.client.sair());
+}
+
+async function cenarioRenomear() {
+  const { devices } = await novaSala(2, T0Mask(), 0);
+  const host = devices[0].client, p2 = devices[1].client;
+  ok(host.vm().nomeSala === "", "sala sem nome por padrão");
+  await host.renomear("  Churrasco de Sexta  ");
+  await settle();
+  ok(host.vm().nomeSala === "Churrasco de Sexta", "renomear corta espaços nas pontas");
+  ok(p2.vm().nomeSala === "Churrasco de Sexta", "os outros veem o nome novo");
+
+  await host.renomear("x".repeat(40));
+  await settle();
+  ok(host.vm().nomeSala.length === 30, "renomear corta em 30 caracteres, veio " + host.vm().nomeSala.length);
+
+  let err = null;
+  await p2.renomear("Não pode").catch(e => { err = e && e.motivo; });
+  ok(err === "fase", "só o host renomeia");
+  ok(host.vm().nomeSala.length === 30, "tentativa do convidado não mudou o nome");
+
+  await host.comecar();
+  await settle();
+  err = null;
+  await host.renomear("Depois de começar").catch(e => { err = e && e.motivo; });
+  ok(err === "fase", "só dá pra renomear no lobby, não depois de começar");
   devices.forEach(d => d.client.sair());
 }
 
@@ -746,6 +842,8 @@ async function main() {
     ["classificação conta só as partidas jogadas", cenarioClassificacaoParcial],
     ["palpite antes de todos mostrarem (item 3.3.5)", cenarioPalpiteCedo],
     ["reconfigurar baralhos no lobby (só host)", cenarioReconfig],
+    ["prontidão em cascata avança sala sozinha; override do host destrava", cenarioProntoProximaAutomatico],
+    ["renomear a sala no lobby (só host, só antes de começar)", cenarioRenomear],
     ["distribuição e fechamento com 9 a 16 participantes", cenarioDistribuicaoGrande],
   ];
   for (const [nome, fn] of blocos) {

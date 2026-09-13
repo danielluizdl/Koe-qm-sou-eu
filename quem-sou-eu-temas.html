@@ -357,6 +357,18 @@
   .danger{color:var(--accent);font-size:.82rem;font-weight:700;line-height:1.4;margin:0}
   .waitline{color:var(--ink-2);font-size:.92rem;font-weight:600;margin:0;text-align:center}
 
+  /* Seletor de dificuldade (0-5): alvo de toque >= 44px (mínimo mobile),
+     opacidade baixa até escolher pra não parecer 6 botões "ativos" ao
+     mesmo tempo — só o escolhido fica sólido. */
+  .dificuldade{display:flex;gap:8px;flex-wrap:wrap}
+  .dificuldade-nota{
+    width:44px;height:44px;border:none;border-radius:12px;color:#fff;
+    font-weight:800;font-size:1.05rem;cursor:pointer;touch-action:manipulation;
+    opacity:.5;transition:opacity .08s ease,transform .08s ease;
+  }
+  .dificuldade-nota:active{transform:translateY(2px)}
+  .dificuldade-nota[aria-pressed="true"]{opacity:1;box-shadow:0 0 0 3px var(--paper) inset}
+
   @media (prefers-reduced-motion: reduce){
     *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
   }
@@ -627,7 +639,10 @@
       <button class="back" id="lobby-sair">← Sair</button>
     </div>
     <div class="code-hero" style="margin-bottom:14px">
-      <p class="eyebrow" id="lobby-nome">Sala</p>
+      <button type="button" class="eyebrow" id="lobby-nome"
+              style="background:none;border:0;padding:0;cursor:pointer;font:inherit;color:inherit">Sala</button>
+      <input id="lobby-nome-input" class="field" type="text" maxlength="30" placeholder="Nome da sala" hidden
+             style="margin:6px 0 0;max-width:260px" aria-label="Nome da sala" autocomplete="off">
       <div class="code-big" id="lobby-code"></div>
     </div>
     <div class="stack" style="gap:6px">
@@ -723,6 +738,8 @@
         <div class="code-big" id="play-carta" style="font-size:clamp(1.3rem,7vw,2rem);letter-spacing:0"></div>
         <p class="note" id="play-jaera-txt"></p>
       </div>
+      <button class="btn" id="play-avaliar" hidden>Avaliar as cartas dessa rodada</button>
+      <button class="btn" id="play-pronto" hidden>Pronto para a próxima partida</button>
     </div>
     <div class="stack" id="play-mesa-sec" style="gap:10px">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -759,8 +776,9 @@
     </div>
     <p class="err" id="fim-err" role="status"></p>
     <div class="foot">
-      <button class="btn" id="fim-denovo" hidden>Jogar de novo</button>
-      <p class="waitline" id="fim-espera" hidden>Esperando o host começar a próxima…</p>
+      <button class="btn" id="fim-avaliar" hidden>Avaliar as cartas dessa rodada</button>
+      <button class="btn" id="fim-pronto" hidden>Pronto para a próxima partida</button>
+      <button class="linkbtn" id="fim-forcar" hidden>Forçar início da próxima partida</button>
       <button class="btn ghost" id="fim-hist">Ver histórico</button>
       <button class="linkbtn" id="fim-apagar" hidden>Apagar esta sala</button>
     </div>
@@ -1610,6 +1628,11 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   var histAberto = false;
   var histAba = "geral";
   var apagarArmado = false;
+  var sairArmado = false;
+  /* botão "← Sair" de cada tela de partida em andamento — só essas 3
+     pedem confirmação (revelando/jogando); s-mesa fica fora (item fora
+     de escopo, sem conta/Firestore). */
+  var SAIR_BOTOES = { "s-carta": "carta-sair", "s-passar": "passar-sair", "s-play": "play-sair" };
   var reconfigVoltar = "s-lobby";
   var pendingHash = "";
   var notasT = null;
@@ -1832,22 +1855,37 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
      variável de módulo esquece assim que a pessoa fecha o app e reabre,
      e nesse caso a avaliação deixaria de ser obrigatória de verdade pra
      quem só volta depois que a sala já andou (outra pessoa jogou de
-     novo enquanto o app estava fechado). */
+     novo enquanto o app estava fechado).
+
+     Guarda um CONJUNTO de pids (JSON, últimos 5), não só o último: com a
+     avaliação em cascata (C3+C4), dá pra avaliar a partida ATUAL antes
+     dela virar hist — nesse instante `avaliacaoPendente` (mais abaixo)
+     ainda enxerga a partida ANTERIOR como "a última terminada" e checaria
+     se ela foi avaliada. Guardar só 1 pid faria essa 2ª avaliação
+     apagar o registro da 1ª e forçar avaliar tudo de novo à toa. */
   function chaveAvaliado(codigo){ return "quemsoueu:avaliado:" + codigo; }
+  function pidsAvaliados(codigo){
+    try {
+      var raw = localStorage.getItem(chaveAvaliado(codigo));
+      if (!raw) return [];
+      return raw.charAt(0) === "[" ? JSON.parse(raw) : [raw];   // compat: valor antigo era 1 pid solto
+    } catch(e){ return []; }
+  }
   function jaAvaliei(codigo, pid){
-    try { return localStorage.getItem(chaveAvaliado(codigo)) === pid; } catch(e){ return false; }
+    return pidsAvaliados(codigo).indexOf(pid) >= 0;
   }
   function marcarAvaliado(codigo, pid){
-    try { localStorage.setItem(chaveAvaliado(codigo), pid); } catch(e){}
+    try {
+      var arr = pidsAvaliados(codigo);
+      if (arr.indexOf(pid) < 0) arr.push(pid);
+      if (arr.length > 5) arr = arr.slice(arr.length - 5);
+      localStorage.setItem(chaveAvaliado(codigo), JSON.stringify(arr));
+    } catch(e){}
   }
 
-  var acaoAposAvaliar = null;      // "sair" | "denovo" | null (null = disparo automático, só retoma o fluxo)
   var avaliando = false;           // tela de avaliação aberta — trava renderSala() até terminar
   var avaliarPid = null, avaliarCodigo = null;
 
-  function precisaAvaliar(v){
-    return !!(v && v.pid && v.podio && v.podio.length > 0 && !jaAvaliei(v.codigo, v.pid));
-  }
   /* {pid, cartas} da ÚLTIMA partida terminada nesta sala da qual eu
      participei, se eu ainda não avaliei — direto do hist (persistente),
      não do "fim" ao vivo. Cobre os dois jeitos de escapar da avaliação:
@@ -1867,6 +1905,9 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
      em innerHTML de propósito (é assim que a bateria de testes simula o
      DOM sem abrir navegador de verdade), então cada linha guarda sua
      própria referência de elemento em vez de tentar reachar via seletor. */
+  /* Verde (fácil) -> vermelho (difícil), 0 a 5. HSL em vez de 6 cores
+     escritas à mão: hue 120 (verde) até 0 (vermelho) em passos iguais. */
+  function corDificuldade(n){ return "hsl(" + (120 - n * 24) + ",60%,40%)"; }
   var avaliarLinhas = [];
   function abrirAvaliar(cartas, pid, codigo){
     avaliando = true;
@@ -1876,19 +1917,31 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     cartas.forEach(function(nome){
       var row = document.createElement("div");
       row.className = "stack"; row.style.gap = "6px";
-      row.innerHTML = '<p style="margin:0"><b>' + esc(nome) + '</b> — <span class="sub"></span></p>';
+      row.innerHTML = '<p style="margin:0"><b>' + esc(nome) + '</b> — <span class="sub"></span></p>' +
+        '<div class="dificuldade" role="radiogroup" aria-label="Dificuldade de ' + esc(nome) + '"></div>';
       var label = row.querySelector("span");
-      if (label) label.textContent = "arraste pra avaliar";
-      var input = document.createElement("input");
-      input.type = "range"; input.min = "0"; input.max = "5"; input.step = "1"; input.value = "0";
-      input.setAttribute("aria-label", "Dificuldade de " + nome);
-      var linha = { nome: nome, input: input, label: label, tocado: false };
-      input.addEventListener("input", function(){
-        linha.tocado = true;
-        if (linha.label) linha.label.textContent = "nota " + input.value + " de 5";
-        atualizarBotaoAvaliar();
-      });
-      row.appendChild(input);
+      if (label) label.textContent = "toque numa nota";
+      var grupo = row.querySelector(".dificuldade");
+      var linha = { nome: nome, valor: null, label: label, tocado: false, botoes: [] };
+      for (var n = 0; n <= 5; n++){
+        (function(n){
+          var b = document.createElement("button");
+          b.type = "button";
+          b.className = "dificuldade-nota";
+          b.textContent = String(n);
+          b.style.background = corDificuldade(n);
+          b.setAttribute("aria-pressed", "false");
+          b.setAttribute("aria-label", n === 0 ? "0, mais fácil" : (n === 5 ? "5, mais difícil" : String(n)));
+          b.addEventListener("click", function(){
+            linha.valor = n; linha.tocado = true;
+            linha.botoes.forEach(function(o, i){ o.setAttribute("aria-pressed", i === n ? "true" : "false"); });
+            if (linha.label) linha.label.textContent = "nota " + n + " de 5";
+            atualizarBotaoAvaliar();
+          });
+          linha.botoes.push(b);
+          grupo.appendChild(b);
+        })(n);
+      }
       lista.appendChild(row);
       avaliarLinhas.push(linha);
     });
@@ -1903,7 +1956,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     if (!SC) return;
     var uid = SC.vm().meuId, pid = avaliarPid;
     var tarefas = avaliarLinhas.map(function(l){
-      return avaliarCarta(l.nome, Number(l.input.value), uid, pid);
+      return avaliarCarta(l.nome, l.valor, uid, pid);
     });
     /* ranking geral (opção B, sem Cloud Function): registra o PRÓPRIO
        resultado no mesmo instante em que a avaliação — já obrigatória —
@@ -1922,20 +1975,37 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     marcarAvaliado(avaliarCodigo, pid);
     avaliando = false;
     $("avaliar-ok").disabled = true;
-    Promise.all(tarefas).then(function(){
-      var acao = acaoAposAvaliar; acaoAposAvaliar = null;
-      if (acao === "denovo") prosseguirJogarDeNovo();
-      else if (acao === "sair") sairDaSala();
-      else renderSala();   // disparo automático (ninguém clicou): só retoma de onde a sala estiver
-    });
+    Promise.all(tarefas).then(function(){ renderSala(); });
   }
-  function prosseguirJogarDeNovo(){
+
+  /* Avaliação em cascata (C3+C4): quem acerta primeiro não fica só
+     esperando — pode avaliar as cartas dessa rodada na hora (por toque,
+     não automático: abrir sozinho sequestraria o momento de "Você foi o
+     1º!"). Cartas vêm de v.membros, não de v.podio — este último só
+     existe depois que TODOS terminam, mas as cartas já são conhecidas
+     desde o fim da fase "revelando". */
+  function tocarAvaliarRodada(){
     if (!SC) return;
-    $("fim-denovo").disabled = true;
-    SC.jogarDeNovo().then(noop, function(e){
-      $("fim-err").textContent = msgErro(e);
-      $("fim-denovo").disabled = false;
-    });
+    var v = SC.vm();
+    abrirAvaliar(cartasUnicas(v.membros), v.pid, v.codigo);
+  }
+  function tocarPronto(){
+    if (!SC) return;
+    var v = SC.vm();
+    SC.marcarProntoProxima(!v.meuProntoProxima).then(function(){ if (SC.ativo) renderSala(); }, noop);
+  }
+  /* Pinta o par "Avaliar" / "Pronto · Aguardando" — usado tanto em
+     s-play (quem termina antes dos outros) quanto em s-fim (quem chega
+     ao fim sem ter avaliado ainda, ou já avaliou e só falta confirmar). */
+  function pintarGateProntidao(v, elAvaliar, elPronto){
+    var jaAv = jaAvaliei(v.codigo, v.pid);
+    elAvaliar.hidden = jaAv;
+    elPronto.hidden = !jaAv;
+    if (jaAv){
+      elPronto.textContent = v.meuProntoProxima
+        ? "Aguardando os outros (" + v.numProntosProxima + " de " + v.numParticipantes + ") · toque pra desmarcar"
+        : "Pronto para a próxima partida";
+    }
   }
 
   /* ============================================================
@@ -2006,7 +2076,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
     function novoJogador(id, nick, t){
       return { id: id, nick: nick, entrouEm: t, vistoEm: t, pronto: false,
-        slot: null, carta: null, revelou: false, revelouEm: null, acertouEm: null, posicao: null };
+        slot: null, carta: null, revelou: false, revelouEm: null, acertouEm: null, posicao: null,
+        prontoProxima: false };
     }
 
     /* ---- entrar / criar ---- */
@@ -2130,6 +2201,15 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       return refSala().update({ mask: mask, nivel: nivel });
     };
 
+    /* Nome da sala: host põe ou troca a qualquer momento no lobby — antes
+       da 1ª partida (nunca botou nome) ou depois de qualquer uma (rever o
+       nome pra próxima). Mesma validação de C.criar (trim + 30 chars). */
+    C.renomear = function(nome){
+      if (!ehHost() || fase() !== "lobby") return rejeitar("fase");
+      var limpo = String(nome == null ? "" : nome).replace(/^\s+|\s+$/g, "").slice(0, 30);
+      return refSala().update({ nome: limpo }).then(function(){ C.nomeSala = limpo; });
+    };
+
     C.marcar = function(id, ligado){
       /* quem joga a partida é decidido no lobby; depois que começa, a lista congela */
       if (!ehHost() || fase() !== "lobby") return resolver();
@@ -2175,7 +2255,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       for (var s = 0; s < ordem.length; s++){
         writes.push(refJogador(ordem[s].id).update({
           slot: s + 1, carta: wordFor(g, 1, s + 1), pronto: false,
-          revelou: false, revelouEm: null, acertouEm: null, posicao: null
+          revelou: false, revelouEm: null, acertouEm: null, posicao: null,
+          prontoProxima: false
         }));
       }
       return Promise.all(writes).then(function(){
@@ -2210,12 +2291,24 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
         .then(function(){ avaliarFase(); return { ok: true, posicao: minhaPos }; });
     };
 
+    /* Ranking geral (opção B) e avaliação em cascata: só pode confirmar
+       "pronto pra próxima" quem já acertou a própria identidade — nem
+       precisa ter chegado ao fim da partida (fase pode ser "jogando" se
+       terminou antes dos outros, ou "fim" se foi o último). Alternável:
+       tocar de novo desfaz, pro caso de toque errado. */
+    C.marcarProntoProxima = function(pronto){
+      var eu = meu();
+      if (!eu || !souParticipante() || !eu.acertouEm) return resolver();
+      return refJogador(C.meuId).update({ prontoProxima: !!pronto }).then(function(){ avaliarFase(); });
+    };
+
     C.jogarDeNovo = function(mask, nivel){
       if (!ehHost() || fase() !== "fim") return rejeitar("fase");
       var writes = [];
       for (var i = 0; i < C.jogadores.length; i++){
         writes.push(refJogador(C.jogadores[i].id).update({
-          slot: null, carta: null, pronto: false, revelou: false, revelouEm: null, acertouEm: null, posicao: null
+          slot: null, carta: null, pronto: false, revelou: false, revelouEm: null, acertouEm: null, posicao: null,
+          prontoProxima: false
         }));
       }
       return Promise.all(writes).then(function(){
@@ -2249,6 +2342,9 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       } else if (!C._avancando && f === "jogando" && todos("acertouEm")){
         C._avancando = true;
         refSala().update({ fase: "fim", fimEm: agora() }).then(limpaAvanco, limpaAvanco);
+      } else if (!C._avancando && f === "fim" && todos("prontoProxima")){
+        C._avancando = true;
+        C.jogarDeNovo().then(limpaAvanco, limpaAvanco);
       }
       gravarHist();
       fecharMinhaPartida();
@@ -2380,12 +2476,16 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       v.numParticipantes = 0;
       v.numProntos = 0;
       v.numConvidados = 0;
+      v.numProntosProxima = 0;   // inclui o host: item C3+C4 exige a prontidão dele também
       v.membros = [];
       for (var k = 0; k < m.length; k++){
         var j = m[k];
         var part = !!pset[j.id];
         var ehHostJ = !!(C.sala && j.id === C.sala.hostId);
-        if (part) v.numParticipantes++;
+        if (part){
+          v.numParticipantes++;
+          if (j.prontoProxima) v.numProntosProxima++;
+        }
         if (part && !ehHostJ){ v.numConvidados++; if (j.pronto) v.numProntos++; }
         v.membros.push({
           id: j.id, nick: j.nick, souEu: j.id === C.meuId,
@@ -2402,6 +2502,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       v.jaAcertei = !!(eu && eu.acertouEm);
       v.meuAcertouEm = (eu && eu.acertouEm) || null;
       v.minhaPosicao = (eu && eu.posicao) ? eu.posicao : null;
+      v.meuProntoProxima = !!(eu && eu.prontoProxima);
 
       v.cartasNaMesa = [];
       v.faltamRevelar = [];
@@ -3720,10 +3821,13 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     else if (alvo === "s-fim") pintarFim(v, entrando);
   }
 
+  var editandoNome = false;   // true enquanto o host digita: snapshots não pisam no campo
   function pintarLobby(v, entrando){
     var host = v.souHost;
     $("lobby-code").textContent = v.codigo;
-    $("lobby-nome").textContent = v.nomeSala || "Sala";
+    if (!editandoNome){
+      $("lobby-nome").textContent = (v.nomeSala || "Sala") + (host ? " ✎" : "");
+    }
     $("lobby-sub").textContent = host
       ? "Toque nos nomes para marcar quem joga. " + v.numParticipantes + " na partida, " +
         v.numProntos + " de " + v.numConvidados + " prontos."
@@ -3905,6 +4009,8 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       $("play-senha").hidden = true; $("play-jaera").hidden = false;
       $("play-carta").textContent = v.minhaCarta || "";
       $("play-jaera-txt").textContent = "Você era " + (v.minhaCarta || "") + "." + seloSufixo(v.minhaCarta);
+      if (ehMesa){ $("play-avaliar").hidden = true; $("play-pronto").hidden = true; }
+      else pintarGateProntidao(v, $("play-avaliar"), $("play-pronto"));
     } else {
       $("play-title").textContent = "Descubra quem você é";
       $("play-status").textContent = (!ehMesa && faltam)
@@ -4014,9 +4120,12 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     }
 
     $("fim-err").textContent = "";
-    $("fim-denovo").hidden = !v.souHost;
-    $("fim-denovo").disabled = false;   // senão fica apagado pra sempre depois da 1ª partida
-    $("fim-espera").hidden = v.souHost;
+    pintarGateProntidao(v, $("fim-avaliar"), $("fim-pronto"));
+    /* Override do host: só aparece depois que ELE MESMO já avaliou (não
+       dá pra pular a própria obrigação) — existe pra destravar a sala se
+       ALGUÉM MAIS sumiu (celular morreu, fechou o app) antes de confirmar
+       "pronto". Sem isso, a única saída seria apagar a sala inteira. */
+    $("fim-forcar").hidden = !(v.souHost && jaAvaliei(v.codigo, v.pid));
     $("fim-apagar").hidden = !v.souHost;
   }
 
@@ -4105,11 +4214,33 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   $("lobby-hist").addEventListener("click", abrirHist);
   $("lobby-apagar").addEventListener("click", confirmarApagar);
 
+  $("lobby-nome").addEventListener("click", function(){
+    if (!SC || !SC.vm().souHost) return;
+    editandoNome = true;
+    $("lobby-nome-input").value = SC.vm().nomeSala || "";
+    $("lobby-nome").hidden = true;
+    $("lobby-nome-input").hidden = false;
+    $("lobby-nome-input").focus();
+  });
+  function salvarNomeSala(){
+    if (!editandoNome) return;
+    editandoNome = false;
+    $("lobby-nome-input").hidden = true;
+    $("lobby-nome").hidden = false;
+    if (SC) SC.renomear($("lobby-nome-input").value).then(function(){ if (SC.ativo) renderSala(); }, noop);
+  }
+  $("lobby-nome-input").addEventListener("blur", salvarNomeSala);
+  $("lobby-nome-input").addEventListener("keydown", function(e){
+    if (e.key === "Enter"){ e.preventDefault(); $("lobby-nome-input").blur(); }
+  });
+
   $("carta-sair").addEventListener("click", sairDoJogo);
 
   $("senha-ok").addEventListener("click", enviarPalpite);
   $("senha-input").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); enviarPalpite(); } });
   $("play-sair").addEventListener("click", sairDoJogo);
+  $("play-avaliar").addEventListener("click", tocarAvaliarRodada);
+  $("play-pronto").addEventListener("click", tocarPronto);
   $("play-mesa-toggle").addEventListener("click", function(){
     var codigo = (modoAtivo === "mesa" && MESA) ? MESA.codigo : (SC ? SC.codigo : "");
     var novo = !mesaEscondida(codigo);
@@ -4129,16 +4260,12 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     }, 400);
   });
 
-  $("fim-sair").addEventListener("click", function(){
-    var v = SC && SC.vm();
-    if (precisaAvaliar(v)){ acaoAposAvaliar = "sair"; abrirAvaliar(cartasUnicas(v.podio), v.pid, v.codigo); return; }
-    sairDaSala();
-  });
-  $("fim-denovo").addEventListener("click", function(){
+  $("fim-sair").addEventListener("click", sairDaSala);
+  $("fim-avaliar").addEventListener("click", tocarAvaliarRodada);
+  $("fim-pronto").addEventListener("click", tocarPronto);
+  $("fim-forcar").addEventListener("click", function(){
     if (!SC) return;
-    var v = SC.vm();
-    if (precisaAvaliar(v)){ acaoAposAvaliar = "denovo"; abrirAvaliar(cartasUnicas(v.podio), v.pid, v.codigo); return; }
-    prosseguirJogarDeNovo();
+    SC.jogarDeNovo().then(noop, function(e){ $("fim-err").textContent = msgErro(e); });
   });
   $("fim-hist").addEventListener("click", abrirHist);
   $("fim-apagar").addEventListener("click", confirmarApagar);
@@ -4423,14 +4550,31 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   }
 
   function sairDoJogo(){
-    pausaPassar = false;
     if (modoAtivo === "mesa"){
+      pausaPassar = false;
       if (MESA){ MESA.sair(); MESA = null; }
       modoAtivo = null; telaMesa = null;
       show("s-home");
       return;
     }
-    sairDaSala();
+    var fase = (SC && SC.ativo) ? SC.vm().fase : null;
+    var precisaConfirmar = fase === "revelando" || fase === "jogando";
+    var btn = SAIR_BOTOES[telaSala] ? $(SAIR_BOTOES[telaSala]) : null;
+    if (!precisaConfirmar){
+      pausaPassar = false;
+      sairDaSala();
+      return;
+    }
+    if (sairArmado){
+      sairArmado = false;
+      if (btn) btn.textContent = "← Sair";
+      pausaPassar = false;
+      sairDaSala();
+      return;
+    }
+    sairArmado = true;
+    if (btn) btn.textContent = "Sair mesmo? Você pode voltar. Toque de novo.";
+    setTimeout(function(){ sairArmado = false; if (btn) btn.textContent = "← Sair"; }, 4000);
   }
 
   /* -------- tela s-create: alternar mesa x clássico -------- */
