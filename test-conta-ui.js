@@ -241,8 +241,23 @@ const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
   const tela = () => A.ui.telaVisivel();
   const preencher = (id, v) => { g(id).value = v; };
 
+  /* ===== 0. boot: não afirma "sem conta" antes de saber o estado =====
+     Auth do Firebase resolve assíncrono; antes do primeiro aviso, a capa
+     (que diz "entrar ou criar conta") tem que estar escondida — senão
+     quem já tem sessão vê um flash da tela de deslogado antes da real. */
+  ok(g("home-capa").hidden === true, "capa começa escondida até o auth resolver");
+
   F._entrar(null);
   await settle();
+
+  /* ===== 0b. sem Firebase (rede caiu, CDN bloqueado, SDK não carregou)
+     a capa tem que voltar a aparecer — não pode ficar escondida pra
+     sempre só porque não há db. ===== */
+  {
+    const semRede = makeApp(makeDb(), { aoMudar(cb){ cb({ db: null }); } });
+    const g2 = id => semRede.dom.document.getElementById(id);
+    ok(g2("home-capa").hidden === false, "sem db, a capa aparece (sem conta possível)");
+  }
 
   /* ===== 1. a home deslogada não oferece o que não pode cumprir ===== */
   ok(!!A.ui.CONTA.api, "CONTAS ligado no db");

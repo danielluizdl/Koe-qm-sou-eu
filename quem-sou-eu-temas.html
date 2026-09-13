@@ -752,6 +752,11 @@
       <h2 id="fim-title">Pódio</h2>
     </div>
     <div class="rows" id="fim-podio"></div>
+    <p class="note" id="fim-carta-noite" hidden></p>
+    <div class="stack" id="fim-recap-wrap" hidden style="gap:8px">
+      <p class="eyebrow" style="margin:0">Recap da partida</p>
+      <div class="rows" id="fim-recap"></div>
+    </div>
     <p class="err" id="fim-err" role="status"></p>
     <div class="foot">
       <button class="btn" id="fim-denovo" hidden>Jogar de novo</button>
@@ -1781,22 +1786,80 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       .then(function(){ return true; }, function(){ return false; });
   }
 
-  /* todas as cartas que estiveram em jogo nessa partida, sem repetir —
-     inclui a própria, como o dono confirmou que tinha que ser. */
-  function cartasDaRodada(v){
+  /* Selo de dificuldade: lê o mesmo agregado cartas/{slug} da C8 pra
+     mostrar, durante o jogo e no fim, a média histórica de todo mundo
+     que já avaliou aquela carta (não é da partida atual). Só existe
+     online — a Mesa e o Clássico não têm activeDb, então ficam mudos. */
+  var seloCache = {};   // slug -> {media,contagem} | false (sem dado) | null (buscando) | undefined (nunca pedido)
+  function carregarSelo(nome){
+    if (!activeDb) return;
+    var slug = slugCarta(nome);
+    if (seloCache[slug] !== undefined) return;
+    seloCache[slug] = null;
+    refCarta(slug).get().then(function(s){
+      var d = s.exists ? s.data() : null;
+      seloCache[slug] = (d && d.contagem > 0) ? { media: d.mediaCache, contagem: d.contagem } : false;
+      renderSala();
+    }, function(){ seloCache[slug] = false; });
+  }
+  function seloDe(nome){
+    if (!nome || !activeDb) return null;
+    var slug = slugCarta(nome);
+    var c = seloCache[slug];
+    if (c === undefined){ carregarSelo(nome); return null; }
+    return c || null;
+  }
+  function seloSufixo(nome){
+    var c = seloDe(nome);
+    return c ? (" · dificuldade " + c.media.toFixed(1) + "/5" + (c.contagem > 1 ? " (" + c.contagem + " avaliações)" : "")) : "";
+  }
+
+  /* todas as cartas que estiveram em jogo numa partida, sem repetir —
+     inclui a própria, como o dono confirmou que tinha que ser. Recebe a
+     lista de resultados (v.podio OU hist.items[pid].resultados — os dois
+     têm .carta), não a vm inteira, porque também precisa rodar em cima
+     do histórico de uma partida que já não é mais a atual. */
+  function cartasUnicas(lista){
     var vistas = {}, out = [];
-    for (var i = 0; i < v.podio.length; i++){
-      var c = v.podio[i].carta;
+    for (var i = 0; i < lista.length; i++){
+      var c = lista[i].carta;
       if (c && !vistas[c]){ vistas[c] = 1; out.push(c); }
     }
     return out;
   }
 
-  var avaliacaoFeitaPara = null;   // pid já avaliado nesta sessão do app
-  var acaoAposAvaliar = null;      // "sair" | "denovo"
+  /* Avaliação já feita, por sala — em localStorage, não em memória: uma
+     variável de módulo esquece assim que a pessoa fecha o app e reabre,
+     e nesse caso a avaliação deixaria de ser obrigatória de verdade pra
+     quem só volta depois que a sala já andou (outra pessoa jogou de
+     novo enquanto o app estava fechado). */
+  function chaveAvaliado(codigo){ return "quemsoueu:avaliado:" + codigo; }
+  function jaAvaliei(codigo, pid){
+    try { return localStorage.getItem(chaveAvaliado(codigo)) === pid; } catch(e){ return false; }
+  }
+  function marcarAvaliado(codigo, pid){
+    try { localStorage.setItem(chaveAvaliado(codigo), pid); } catch(e){}
+  }
+
+  var acaoAposAvaliar = null;      // "sair" | "denovo" | null (null = disparo automático, só retoma o fluxo)
+  var avaliando = false;           // tela de avaliação aberta — trava renderSala() até terminar
+  var avaliarPid = null, avaliarCodigo = null;
 
   function precisaAvaliar(v){
-    return !!(v && v.pid && v.pid !== avaliacaoFeitaPara && v.podio && v.podio.length > 0);
+    return !!(v && v.pid && v.podio && v.podio.length > 0 && !jaAvaliei(v.codigo, v.pid));
+  }
+  /* {pid, cartas} da ÚLTIMA partida terminada nesta sala da qual eu
+     participei, se eu ainda não avaliei — direto do hist (persistente),
+     não do "fim" ao vivo. Cobre os dois jeitos de escapar da avaliação:
+     a sala andar antes de eu clicar em algo, OU eu fechar o app entre
+     uma partida e a próxima e só voltar bem mais tarde. */
+  function avaliacaoPendente(v){
+    var ultima = v.partidas && v.partidas[0];
+    if (!ultima || jaAvaliei(v.codigo, ultima.pid)) return null;
+    var souEu = false;
+    for (var i = 0; i < ultima.resultados.length; i++) if (ultima.resultados[i].id === v.meuId) { souEu = true; break; }
+    if (!souEu) return null;
+    return { pid: ultima.pid, cartas: cartasUnicas(ultima.resultados) };
   }
 
   /* [{nome, input, label, tocado}] da avaliação aberta agora — mantido em
@@ -1805,9 +1868,11 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
      DOM sem abrir navegador de verdade), então cada linha guarda sua
      própria referência de elemento em vez de tentar reachar via seletor. */
   var avaliarLinhas = [];
-  function abrirAvaliar(v){
+  function abrirAvaliar(cartas, pid, codigo){
+    avaliando = true;
+    avaliarPid = pid;
+    avaliarCodigo = codigo;
     var lista = $("avaliar-lista"); lista.innerHTML = ""; avaliarLinhas = [];
-    var cartas = cartasDaRodada(v);
     cartas.forEach(function(nome){
       var row = document.createElement("div");
       row.className = "stack"; row.style.gap = "6px";
@@ -1836,16 +1901,32 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   }
   function concluirAvaliar(){
     if (!SC) return;
-    var v = SC.vm(), uid = v.meuId, pid = v.pid;
+    var uid = SC.vm().meuId, pid = avaliarPid;
     var tarefas = avaliarLinhas.map(function(l){
       return avaliarCarta(l.nome, Number(l.input.value), uid, pid);
     });
-    avaliacaoFeitaPara = pid;
+    /* ranking geral (opção B, sem Cloud Function): registra o PRÓPRIO
+       resultado no mesmo instante em que a avaliação — já obrigatória —
+       acontece. contaLigada() (não contaCompleta()) de propósito: numa
+       avaliação forçada logo após reconectar, CONTA.perfil ainda pode
+       não ter chegado (carregarPerfil é assíncrono), mas registrarResultado
+       não depende do perfil em cache — ele lê perfis/{uid} direto do
+       Firestore. Exigir contaCompleta() aqui perderia o registro pra
+       sempre nesse race, sem nunca mais tentar de novo (jaAvaliei já
+       ficaria true). Não é convidado (uid bate com a conta logada) e
+       nunca trava a saída se falhar: best-effort, igual ao voto de
+       dificuldade. */
+    if (contaLigada() && CONTA.ident.uid === uid){
+      tarefas.push(CONTA.api.registrarResultado(uid, avaliarCodigo, pid));
+    }
+    marcarAvaliado(avaliarCodigo, pid);
+    avaliando = false;
     $("avaliar-ok").disabled = true;
     Promise.all(tarefas).then(function(){
       var acao = acaoAposAvaliar; acaoAposAvaliar = null;
       if (acao === "denovo") prosseguirJogarDeNovo();
-      else sairDaSala();
+      else if (acao === "sair") sairDaSala();
+      else renderSala();   // disparo automático (ninguém clicou): só retoma de onde a sala estiver
     });
   }
   function prosseguirJogarDeNovo(){
@@ -1924,7 +2005,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     }
 
     function novoJogador(id, nick, t){
-      return { id: id, nick: nick, entrouEm: t, vistoEm: t,
+      return { id: id, nick: nick, entrouEm: t, vistoEm: t, pronto: false,
         slot: null, carta: null, revelou: false, revelouEm: null, acertouEm: null, posicao: null };
     }
 
@@ -2060,6 +2141,14 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       return refSala().update({ participantes: atual });
     };
 
+    /* cada um marca a própria prontidão — é o único campo do lobby que
+       o convidado escreve direto (a regra já deixa: dono do doc). Só
+       sinaliza pro host, não trava o "Começar". */
+    C.ficarPronto = function(pronto){
+      if (!C.meuId || fase() !== "lobby") return resolver();
+      return refJogador(C.meuId).update({ pronto: !!pronto });
+    };
+
     C.comecar = function(mask, nivel){
       if (!ehHost() || fase() !== "lobby") return rejeitar("fase");
       mask = (mask == null) ? C.sala.mask : mask;
@@ -2085,7 +2174,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       var writes = [];
       for (var s = 0; s < ordem.length; s++){
         writes.push(refJogador(ordem[s].id).update({
-          slot: s + 1, carta: wordFor(g, 1, s + 1),
+          slot: s + 1, carta: wordFor(g, 1, s + 1), pronto: false,
           revelou: false, revelouEm: null, acertouEm: null, posicao: null
         }));
       }
@@ -2126,7 +2215,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       var writes = [];
       for (var i = 0; i < C.jogadores.length; i++){
         writes.push(refJogador(C.jogadores[i].id).update({
-          slot: null, carta: null, revelou: false, revelouEm: null, acertouEm: null, posicao: null
+          slot: null, carta: null, pronto: false, revelou: false, revelouEm: null, acertouEm: null, posicao: null
         }));
       }
       return Promise.all(writes).then(function(){
@@ -2289,15 +2378,19 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       var pa = participantesAtuais(), pset = {};
       for (var i = 0; i < pa.length; i++) pset[pa[i]] = 1;
       v.numParticipantes = 0;
+      v.numProntos = 0;
+      v.numConvidados = 0;
       v.membros = [];
       for (var k = 0; k < m.length; k++){
         var j = m[k];
         var part = !!pset[j.id];
+        var ehHostJ = !!(C.sala && j.id === C.sala.hostId);
         if (part) v.numParticipantes++;
+        if (part && !ehHostJ){ v.numConvidados++; if (j.pronto) v.numProntos++; }
         v.membros.push({
           id: j.id, nick: j.nick, souEu: j.id === C.meuId,
-          ehHost: !!(C.sala && j.id === C.sala.hostId),
-          presente: presente(j), participante: part,
+          ehHost: ehHostJ,
+          presente: presente(j), participante: part, pronto: !!j.pronto,
           revelou: !!j.revelou, acertou: !!j.acertouEm, acertouEm: j.acertouEm || null,
           carta: j.carta || null, posicao: j.posicao || null, slot: j.slot || null
         });
@@ -2350,31 +2443,26 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   /* -------- historico: agregados calculados das partidas -------- */
   function histItems(hist){ return (hist && hist.items) ? hist.items : {}; }
+  /* Ranking DESTA sala — mesma fórmula do rank geral (saldo/aproveitamento
+     de pontuacao.js, a que soma zero por partida), não uma reinventada
+     aqui. `hist.items[pid].resultados` é o mesmo formato que rank-server.js
+     já transforma em pontos pra gravar perfis/{uid}. */
   function calcClassificacao(hist){
-    var items = histItems(hist), pids = [], acc = {};
+    var items = histItems(hist), pids = [], partidas = [], nicks = {};
     for (var pid in items) if (items.hasOwnProperty(pid)) pids.push(pid);
     pids.sort(function(a, b){ return (items[a].terminadaEm || 0) - (items[b].terminadaEm || 0); });
     for (var p = 0; p < pids.length; p++){
-      var res = items[pids[p]].resultados || [], N = res.length;
+      var res = (items[pids[p]].resultados || []).slice().sort(function(a, b){ return a.posicao - b.posicao; });
+      if (!res.length) continue;
+      var ordem = [];
       for (var i = 0; i < res.length; i++){
-        var rr = res[i];
-        var x = acc[rr.id] || (acc[rr.id] = { id: rr.id, nick: rr.nick, partidas: 0, vitorias: 0, podios: 0, somaPos: 0, pontos: 0 });
-        x.nick = rr.nick;
-        x.partidas++;
-        if (rr.posicao === 1) x.vitorias++;
-        if (rr.posicao <= 3) x.podios++;
-        x.somaPos += rr.posicao;
-        x.pontos += (N - rr.posicao + 1);
+        ordem.push({ id: res[i].id, chave: res[i].posicao });
+        nicks[res[i].id] = res[i].nick;
       }
+      partidas.push(PONTOS.pontuarPartida(ordem));
     }
-    var out = [];
-    for (var id in acc) if (acc.hasOwnProperty(id)){
-      var a = acc[id]; a.media = a.partidas ? a.somaPos / a.partidas : 0; out.push(a);
-    }
-    out.sort(function(u, w){
-      return (w.pontos - u.pontos) || (w.vitorias - u.vitorias) || (u.media - w.media)
-        || (u.nick < w.nick ? -1 : u.nick > w.nick ? 1 : 0);
-    });
+    var out = PONTOS.agregar(partidas);
+    for (var k = 0; k < out.length; k++) out[k].nick = nicks[out[k].id] || out[k].id;
     return out;
   }
   function listaPartidas(hist){
@@ -3564,6 +3652,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   /* -------- render principal, guiado pelo estado da sala -------- */
   function renderSala(){
     if (!SC || !SC.ativo) return;
+    if (avaliando) return;   // avaliação aberta: nenhum snapshot (nem o heartbeat de presença) me tira daqui
     var v = SC.vm();
     if (v.apagada){
       SC.sair(); SC = null; telaSala = null; histAberto = false; apagarArmado = false;
@@ -3572,6 +3661,28 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       show("s-home"); pintarHome();
       return;
     }
+
+    /* avaliação obrigatória de verdade: se a ÚLTIMA partida terminada
+       nesta sala (da qual eu participei) ainda não foi avaliada por mim
+       e a fase já não é mais "fim", força a tela de avaliação antes de
+       seguir a sala adiante — cobre tanto a sala ter andado antes de eu
+       clicar em algo quanto eu ter fechado o app e voltado depois. */
+    if (v.fase !== "fim"){
+      var pend = avaliacaoPendente(v);
+      if (pend){ abrirAvaliar(pend.cartas, pend.pid, v.codigo); return; }
+
+      /* já avaliei essa partida, mas o registro do rank geral (opção B)
+         pode ter falhado no meio do caminho (rede, aba fechada bem na
+         hora) — sem isso, jaAvaliei() nunca mais pede de novo e o saldo
+         dessa partida ficaria perdido pra sempre. Idempotente e barato
+         (1 leitura, no-op se já estiver gravado): tenta de novo aqui,
+         de graça, toda vez que a sala renderizar. */
+      var ultima = v.partidas && v.partidas[0];
+      if (ultima && jaAvaliei(v.codigo, ultima.pid) && contaLigada() && CONTA.ident.uid === v.meuId){
+        CONTA.api.registrarResultado(v.meuId, v.codigo, ultima.pid);
+      }
+    }
+
     if (pausaPassar && telaVisivel() === "s-passar") return;   // buffer "vire o celular"
     var alvo = telaDaVm(v);
     if (!alvo) return;
@@ -3614,30 +3725,36 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     $("lobby-code").textContent = v.codigo;
     $("lobby-nome").textContent = v.nomeSala || "Sala";
     $("lobby-sub").textContent = host
-      ? "Toque nos nomes para marcar quem joga. " + v.numParticipantes + " na partida."
-      : "Boa, " + v.meuNick + ". Esperando o host começar.";
+      ? "Toque nos nomes para marcar quem joga. " + v.numParticipantes + " na partida, " +
+        v.numProntos + " de " + v.numConvidados + " prontos."
+      : "Boa, " + v.meuNick + ". Toque no seu nome quando estiver pronto.";
     var box = $("lobby-membros");
     box.innerHTML = "";
     for (var i = 0; i < v.membros.length; i++){
       (function(m){
-        var podeMarcar = host && v.fase !== "fim";
-        var row = document.createElement(podeMarcar ? "button" : "div");
+        var podeMarcar = host && v.fase !== "fim";        // host: inclui/exclui quem joga
+        var souEuConvidado = m.souEu && !host && v.fase !== "fim";  // convidado: só a própria prontidão
+        var clicavel = podeMarcar || souEuConvidado;
+        var row = document.createElement(clicavel ? "button" : "div");
         row.className = "row" + (m.souEu ? " eu" : "");
-        if (podeMarcar) row.type = "button";
+        if (clicavel) row.type = "button";
         var tags = [];
         if (m.ehHost) tags.push("host");
         if (m.souEu) tags.push("você");
         if (!m.presente) tags.push("ausente");
+        var marcado = podeMarcar ? m.participante : (m.ehHost || m.pronto);
         row.innerHTML =
-          (podeMarcar
-            ? '<span class="check' + (m.participante ? " on" : "") + '">✓</span>'
-            : '<span class="dot' + (m.presente ? " on" : "") + '"></span>') +
+          (clicavel
+            ? '<span class="check' + (marcado ? " on" : "") + '">✓</span>'
+            : '<span class="dot' + (marcado ? " on" : "") + '"></span>') +
           '<span class="grow"><b></b>' +
           (tags.length ? '<span class="sub">' + tags.join(" · ") + '</span>' : '') +
           '</span>';
         row.querySelector("b").textContent = m.nick;
         if (podeMarcar){
           row.addEventListener("click", function(){ SC.marcar(m.id, !m.participante).then(noop, noop); buzz(8); });
+        } else if (souEuConvidado){
+          row.addEventListener("click", function(){ SC.ficarPronto(!m.pronto).then(noop, noop); buzz(8); });
         }
         box.appendChild(row);
       })(v.membros[i]);
@@ -3787,7 +3904,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
         : "Boa. Agora é ver os outros se virarem.";
       $("play-senha").hidden = true; $("play-jaera").hidden = false;
       $("play-carta").textContent = v.minhaCarta || "";
-      $("play-jaera-txt").textContent = "Você era " + (v.minhaCarta || "") + ".";
+      $("play-jaera-txt").textContent = "Você era " + (v.minhaCarta || "") + "." + seloSufixo(v.minhaCarta);
     } else {
       $("play-title").textContent = "Descubra quem você é";
       $("play-status").textContent = (!ehMesa && faltam)
@@ -3806,7 +3923,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     for (var i = 0; i < v.membros.length; i++){
       var m = v.membros[i];
       if (!m.participante || m.souEu) continue;
-      var sub = m.carta ? m.carta : (m.revelou ? "(mostrou)" : "ainda não mostrou");
+      var sub = m.carta ? (m.carta + seloSufixo(m.carta)) : (m.revelou ? "(mostrou)" : "ainda não mostrou");
       var tempo = (m.acertou && v.iniciadaEm && m.acertouEm) ? fmtTempo(m.acertouEm - v.iniciadaEm) : "";
       op.innerHTML += '<div class="row' + (m.acertou ? " win" : "") + '"><span class="grow"><b>' + esc(m.nick) +
         '</b><span class="sub">' + esc(sub) + '</span></span>' +
@@ -3830,6 +3947,32 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     } catch(e){ ta.value = ""; }
   }
 
+  /* [{titulo,valor}] — quem acertou mais rápido e a virada mais apertada,
+     direto do que o vm já carrega (acertouEm por jogador). Sem tempo
+     limite nem contagem regressiva: é tempo corrido desde iniciadaEm,
+     igual ao relógio que já existe na s-play. */
+  function calcularRecap(v){
+    var tempos = [];
+    for (var i = 0; i < v.membros.length; i++){
+      var m = v.membros[i];
+      if (m.participante && m.acertou && v.iniciadaEm && m.acertouEm){
+        tempos.push({ nick: m.nick, ms: m.acertouEm - v.iniciadaEm });
+      }
+    }
+    if (!tempos.length) return [];
+    tempos.sort(function(a, b){ return a.ms - b.ms; });
+    var linhas = [{ titulo: "Mais rápido", valor: tempos[0].nick + " · " + fmtTempo(tempos[0].ms) }];
+    if (tempos.length > 1){
+      var apertada = null;
+      for (var k = 1; k < tempos.length; k++){
+        var gap = tempos[k].ms - tempos[k - 1].ms;
+        if (!apertada || gap < apertada.gap) apertada = { a: tempos[k - 1].nick, b: tempos[k].nick, gap: gap };
+      }
+      linhas.push({ titulo: "Disputa mais apertada", valor: apertada.a + " e " + apertada.b + " · " + fmtTempo(apertada.gap) + " de diferença" });
+    }
+    return linhas;
+  }
+
   function pintarFim(v, entrando){
     $("fim-code").textContent = "sala " + v.codigo;
     $("fim-title").textContent = v.podio.length
@@ -3840,10 +3983,39 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       var p = v.podio[i];
       box.innerHTML += '<div class="row' + (p.souEu ? " eu" : "") + (i === 0 ? " win" : "") + '">' +
         '<span class="pos' + (i === 0 ? " done" : "") + '">' + p.posicao + 'º</span>' +
-        '<span class="grow"><b>' + esc(p.nick) + '</b><span class="sub">' + esc(p.carta) + '</span></span></div>';
+        '<span class="grow"><b>' + esc(p.nick) + '</b><span class="sub">' + esc(p.carta) + seloSufixo(p.carta) + '</span></span></div>';
     }
+
+    var cartas = cartasUnicas(v.podio), noite = null;
+    for (var n = 0; n < cartas.length; n++){
+      var c = seloDe(cartas[n]);
+      if (c && (!noite || c.media > noite.media)) noite = { nome: cartas[n], media: c.media, contagem: c.contagem };
+    }
+    var elNoite = $("fim-carta-noite");
+    if (noite){
+      elNoite.hidden = false;
+      elNoite.textContent = "Carta da noite: " + noite.nome + " — dificuldade média " +
+        noite.media.toFixed(1) + "/5 em todas as partidas (" + noite.contagem + " avaliações).";
+    } else {
+      elNoite.hidden = true;
+    }
+
+    var recap = calcularRecap(v);
+    var elRecapWrap = $("fim-recap-wrap"), elRecap = $("fim-recap");
+    if (recap.length){
+      elRecapWrap.hidden = false;
+      elRecap.innerHTML = "";
+      for (var r = 0; r < recap.length; r++){
+        elRecap.innerHTML += '<div class="row"><span class="grow"><b>' + esc(recap[r].titulo) +
+          '</b><span class="sub">' + esc(recap[r].valor) + '</span></span></div>';
+      }
+    } else {
+      elRecapWrap.hidden = true;
+    }
+
     $("fim-err").textContent = "";
     $("fim-denovo").hidden = !v.souHost;
+    $("fim-denovo").disabled = false;   // senão fica apagado pra sempre depois da 1ª partida
     $("fim-espera").hidden = v.souHost;
     $("fim-apagar").hidden = !v.souHost;
   }
@@ -3863,9 +4035,9 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
       g.innerHTML += '<div class="row">' +
         '<span class="pos">' + (i + 1) + '</span>' +
         '<span class="grow"><b>' + esc(c.nick) + '</b><span class="sub">' +
-        c.pontos + ' pts · ' + c.partidas + ' partida' + (c.partidas === 1 ? "" : "s") +
+        (c.saldo > 0 ? "+" : "") + c.saldo + ' de saldo · ' + Math.round(c.aproveitamento * 100) + '% de aproveitamento · ' +
+        c.partidas + ' partida' + (c.partidas === 1 ? "" : "s") +
         ' · ' + c.vitorias + ' vitória' + (c.vitorias === 1 ? "" : "s") +
-        ' · média ' + c.media.toFixed(1) +
         '</span></span></div>';
     }
     var pt = $("hist-partidas"); pt.innerHTML = "";
@@ -3959,13 +4131,13 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   $("fim-sair").addEventListener("click", function(){
     var v = SC && SC.vm();
-    if (precisaAvaliar(v)){ acaoAposAvaliar = "sair"; abrirAvaliar(v); return; }
+    if (precisaAvaliar(v)){ acaoAposAvaliar = "sair"; abrirAvaliar(cartasUnicas(v.podio), v.pid, v.codigo); return; }
     sairDaSala();
   });
   $("fim-denovo").addEventListener("click", function(){
     if (!SC) return;
     var v = SC.vm();
-    if (precisaAvaliar(v)){ acaoAposAvaliar = "denovo"; abrirAvaliar(v); return; }
+    if (precisaAvaliar(v)){ acaoAposAvaliar = "denovo"; abrirAvaliar(cartasUnicas(v.podio), v.pid, v.codigo); return; }
     prosseguirJogarDeNovo();
   });
   $("fim-hist").addEventListener("click", abrirHist);
@@ -4410,10 +4582,15 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   var QF = (typeof window !== "undefined" && window) ? window.QSE_FIREBASE : null;
   if (QF && typeof QF.aoMudar === "function"){
+    /* Só existe conta possível quando o Firebase liga — e ligar é
+       assíncrono. Some com a capa AGORA, antes do primeiro aviso: senão
+       quem já tem sessão vê um flash da tela de deslogado antes da real. */
+    var _capaBoot = $("home-capa");
+    if (_capaBoot) _capaBoot.hidden = true;
     ligarConta();
     ligarAmbientes();
     QF.aoMudar(function(e){
-      if (!e || !e.db) return;
+      if (!e || !e.db){ pintarHome(); return; }   // rede caiu / sem db: a capa tem que voltar
       /* Passa a identidade sempre: ativarOnline só liga uma vez, mas a
          identidade pode mudar depois (a pessoa entra na conta com o
          jogo já aberto), e aí a próxima sala já nasce com o uid. */

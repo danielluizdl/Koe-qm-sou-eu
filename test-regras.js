@@ -55,8 +55,24 @@ async function t(nome, fn){
     await setDoc(doc(db, "salas/FESTA"), { codigo:"FESTA", hostId:"ana", fase:"lobby", mask:1, nivel:0 });
     await setDoc(doc(db, "salas/FESTA/jogadores/ana"), { id:"ana", nick:"Ana" });
     await setDoc(doc(db, "salas/FESTA/jogadores/bia"), { id:"bia", nick:"Bia" });
-    await setDoc(doc(db, "salas/FESTA/hist/registro"), { items:{} });
+    await setDoc(doc(db, "salas/FESTA/hist/registro"), { items:{
+      p1: { terminadaEm: 100, mask: 1, nivel: 0, resultados: [
+        { id: "ana", nick: "Ana", carta: "Goku", posicao: 1 },
+        { id: "bia", nick: "Bia", carta: "Naruto", posicao: 2 }
+      ]},
+      /* n=3 com o ZECA no MEIO da tabela (nem 1º, nem último) — é o caso
+         que ficou sem cobertura (bug da divisão inteira em
+         (n-posicao)/(n-1): com n e posicao `int`, dava 0 pra qualquer
+         posição do meio e negava a escrita mesmo com valor correto). */
+      "p-meio": { terminadaEm: 100, mask: 1, nivel: 0, resultados: [
+        { id: "ana", nick: "Ana", carta: "Goku", posicao: 1 },
+        { id: "zeca", nick: "Zeca", carta: "Luffy", posicao: 2 },
+        { id: "bia", nick: "Bia", carta: "Naruto", posicao: 3 }
+      ]}
+    }});
   });
+  /* n=2: 1º tem saldo n-2p+1 = 1, aproveitamento (n-p)/(n-1) = 1.
+     2º tem saldo -1, aproveitamento 0. */
 
   /* ============ perfis: público pra ler, só o dono pra escrever ============ */
   await t("amigo lê o perfil público (é o que o rank precisa)",
@@ -110,21 +126,65 @@ async function t(nome, fn){
   await t("dono lê a própria lista",
     () => assertSucceeds(getDocs(collection(ana, "usuarios/ana/amigos"))));
 
-  /* ============ partidas: só o Admin SDK escreve (Cloud Function) ============ */
+  /* ============ partidas: ranking geral sem Cloud Function (opção B) ============
+     Sem Admin SDK, o DONO grava o próprio resultado — mas só se bater
+     com salas/{sala}/hist/registro, que só o host escreve. Não é mais
+     "ninguém cria", é "só cria o que é comprovadamente seu". */
   await semear(async db => {
-    await setDoc(doc(db, "usuarios/ana/partidas/p0"), { pid:"p0", n:3, posicao:1, saldo:2 });
+    await setDoc(doc(db, "usuarios/ana/partidas/p0"), { pid:"p0", n:3, posicao:1, saldo:2, aproveitamento:1 });
   });
   await t("dono LÊ o próprio histórico de partidas",
     () => assertSucceeds(getDocs(collection(ana, "usuarios/ana/partidas"))));
-  await t("nem o DONO cria partida à mão (declararia qualquer saldo)",
+  await t("NÃO cria partida com saldo que não bate com a fórmula (declara 99)",
     () => assertFails(setDoc(doc(ana, "usuarios/ana/partidas/p1"),
-      { pid:"p1", n:3, posicao:1, saldo:2, aproveitamento:1 })));
-  await t("partida gravada é IMUTÁVEL",
-    () => assertFails(updateDoc(doc(ana, "usuarios/ana/partidas/p0"), { saldo: 99 })));
+      { pid:"p1", sala:"FESTA", terminadaEm:100, n:2, posicao:1, saldo:99, aproveitamento:1, idxResultado:0 })));
+  await t("NÃO cria partida se declara uma posição diferente da própria no resultado",
+    () => assertFails(setDoc(doc(ana, "usuarios/ana/partidas/p1"),
+      { pid:"p1", sala:"FESTA", terminadaEm:100, n:2, posicao:2, saldo:-1, aproveitamento:0, idxResultado:0 })));
+  await t("NÃO cria partida apontando pro ÍNDICE de outro jogador do resultado",
+    () => assertFails(setDoc(doc(ana, "usuarios/ana/partidas/p1"),
+      { pid:"p1", sala:"FESTA", terminadaEm:100, n:2, posicao:2, saldo:-1, aproveitamento:0, idxResultado:1 })));
+  await t("NÃO cria partida pra um pid que não existe no hist da sala",
+    () => assertFails(setDoc(doc(ana, "usuarios/ana/partidas/p-fantasma"),
+      { pid:"p-fantasma", sala:"FESTA", terminadaEm:100, n:2, posicao:1, saldo:1, aproveitamento:1, idxResultado:0 })));
+  await t("NÃO cria partida com aproveitamento que não bate com a fórmula",
+    () => assertFails(setDoc(doc(ana, "usuarios/ana/partidas/p1"),
+      { pid:"p1", sala:"FESTA", terminadaEm:100, n:2, posicao:1, saldo:1, aproveitamento:0.2, idxResultado:0 })));
+  await t("dono cria a PRÓPRIA partida quando bate com o hist da sala",
+    () => assertSucceeds(setDoc(doc(ana, "usuarios/ana/partidas/p1"),
+      { pid:"p1", sala:"FESTA", terminadaEm:100, n:2, posicao:1, saldo:1, aproveitamento:1, idxResultado:0 })));
+  /* regressão: (n-posicao)/(n-1) com n e posicao `int` faz o CEL truncar
+     a divisão pra 0 — só bate com o aproveitamento real quando ele já é
+     0 ou 1 (posição extrema). Toda posição do MEIO ficava sem cobertura
+     (test-regras.js só tinha casos n=2, onde não existe meio de tabela)
+     e era negada em produção mesmo com valor matematicamente correto. */
+  await t("dono cria partida com posição do MEIO da tabela (n=3, nem 1º nem último)",
+    () => assertSucceeds(setDoc(doc(zeca, "usuarios/zeca/partidas/p-meio"),
+      { pid:"p-meio", sala:"FESTA", terminadaEm:100, n:3, posicao:2, saldo:0, aproveitamento:0.5, idxResultado:1 })));
+  await t("partida gravada é IMUTÁVEL mesmo validada",
+    () => assertFails(updateDoc(doc(ana, "usuarios/ana/partidas/p1"), { saldo: 99 })));
   await t("partida gravada não pode ser apagada",
     () => assertFails(deleteDoc(doc(ana, "usuarios/ana/partidas/p0"))));
-  await t("outro não grava partida na conta alheia",
-    () => assertFails(setDoc(doc(bia, "usuarios/ana/partidas/p3"), { pid:"p3", n:3 })));
+  await t("outro não grava partida na conta alheia (mesmo batendo com o hist)",
+    () => assertFails(setDoc(doc(bia, "usuarios/ana/partidas/p3"),
+      { pid:"p3", sala:"FESTA", terminadaEm:100, n:2, posicao:1, saldo:1, aproveitamento:1, idxResultado:0 })));
+
+  /* ============ perfis: somar UMA partida real ao agregado (opção B) ============ */
+  await t("NÃO soma no perfil citando uma partida que não existe",
+    () => assertFails(updateDoc(doc(ana, "perfis/ana"),
+      { partidas:4, vitorias:1, podios:1, saldo:6, somaAprov:1, atualizadoEm:2, ultimaPartidaId:"p-nao-existe" })));
+  await t("NÃO soma um valor que não bate com a partida citada (saldo inflado)",
+    () => assertFails(updateDoc(doc(ana, "perfis/ana"),
+      { partidas:4, vitorias:1, podios:1, saldo:500, somaAprov:1, atualizadoEm:2, ultimaPartidaId:"p1" })));
+  await t("NÃO pula mais de uma partida de uma vez (partidas +2)",
+    () => assertFails(updateDoc(doc(ana, "perfis/ana"),
+      { partidas:5, vitorias:1, podios:1, saldo:6, somaAprov:1, atualizadoEm:2, ultimaPartidaId:"p1" })));
+  await t("dono soma a própria partida no perfil, amarrado numa partida real já gravada",
+    () => assertSucceeds(updateDoc(doc(ana, "perfis/ana"),
+      { partidas:4, vitorias:1, podios:1, saldo:6, somaAprov:1, atualizadoEm:2, ultimaPartidaId:"p1" })));
+  await t("OUTRO não soma partida de ana no perfil dela",
+    () => assertFails(updateDoc(doc(bia, "perfis/ana"),
+      { partidas:5, vitorias:1, podios:1, saldo:7, somaAprov:1, atualizadoEm:3, ultimaPartidaId:"p1" })));
 
   /* ============ nicks: índice de unicidade E login por nick ============ */
   await t("logado lê o índice (é como se acha amigo por nick)",

@@ -523,16 +523,77 @@
     };
 
     /* ---------------- partidas e agregado ----------------
-       NÃO moram mais aqui. O cliente não grava `usuarios/{uid}/partidas`
-       nem o agregado de `perfis/{uid}` — as regras bloqueiam. Quem
-       escreve é a Cloud Function `derivarRank` (functions/index.js), a
-       partir do resultado que o host gravou em salas/{codigo}/hist.
-       A lógica de pontuação/reconstrução vive em rank-server.js, que a
-       função chama e os testes exercitam contra o db falso.
+       Sem Cloud Function — o projeto é plano Spark, Functions exige
+       Blaze — então não tem Admin SDK pra gravar isso por fora do
+       cliente. Cada jogador grava o PRÓPRIO resultado direto, mas a
+       regra do Firestore cruza com salas/{codigo}/hist/registro (só o
+       host escreve aquilo) antes de aceitar: o saldo declarado tem que
+       bater com a posição real da própria pessoa naquele resultado, ou
+       a escrita é negada. Fecha "declarar um saldo do nada pelo
+       console" sem precisar de servidor — mesmo espírito do voto de
+       dificuldade em cartas/{slug}.
 
-       Motivo: uma regra do Firestore não prova que o saldo declarado
-       veio de partida real, então antes dava pra inflar o rank pelo
-       console. Ver o "LIMITE CONHECIDO" em firestore.rules. */
+       O que essa troca NÃO fecha (documentado em firestore.rules): um
+       host mentiroso ainda pode forjar o `hist` da PRÓPRIA sala antes
+       de qualquer um gravar o resultado — mesmo limite que já existia
+       com a Cloud Function, porque quem sempre ditou o resultado bruto
+       foi o host. */
+    function refPartida(uid, pid){ return refUsuario(uid).collection("partidas").doc(pid); }
+
+    var TENTATIVAS_PERFIL = 20;
+    function somarNoPerfil(uid, minha, pid, tentativas){
+      tentativas = tentativas || 0;
+      if (tentativas >= TENTATIVAS_PERFIL) return Promise.reject(erro("perfil_ocupado", "muita disputa pelo perfil"));
+      return refPerfil(uid).acquire({ holder: uid, ttlMs: 4000 }).then(function(res){
+        if (!res || !res.acquired) return somarNoPerfil(uid, minha, pid, tentativas + 1);
+        return refPerfil(uid).get().then(function(s){
+          var p = s.data();
+          return refPerfil(uid).update({
+            partidas: (p.partidas || 0) + 1,
+            vitorias: (p.vitorias || 0) + (minha.posicao === 1 ? 1 : 0),
+            podios: (p.podios || 0) + (minha.posicao <= 3 ? 1 : 0),
+            saldo: (p.saldo || 0) + minha.saldo,
+            somaAprov: (p.somaAprov || 0) + minha.aproveitamento,
+            atualizadoEm: agora(),
+            ultimaPartidaId: pid
+          });
+        });
+      });
+    }
+
+    /* Lê o resultado da partida no hist da SALA (fonte de verdade, só o
+       host escreve), pontua com pontuacao.js — a mesma fórmula do
+       ranking desta sala — e grava só a própria linha. Idempotente: se
+       `usuarios/{uid}/partidas/{pid}` já existe, não faz nada (a regra
+       também recusaria, é create-only). Resolve `false` sem propagar
+       erro em qualquer caso que não deveria travar quem só quer sair
+       da sala — registrar o rank é best-effort, como a avaliação de
+       dificuldade já era. */
+    A.registrarResultado = function(uid, sala, pid){
+      if (!uid || !sala || !pid) return Promise.resolve(false);
+      return refPartida(uid, pid).get().then(function(s){
+        if (s.exists) return false;
+        return db.doc("salas/" + sala + "/hist/registro").get().then(function(h){
+          var it = h.exists && h.data().items && h.data().items[pid];
+          if (!it || !it.resultados || !it.resultados.length) return false;
+          var ordem = it.resultados.map(function(r){ return { id: r.id, chave: r.posicao }; });
+          var linhas = PONTOS.pontuarPartida(ordem), minha = null, idx = -1, k;
+          /* mesmo índice em `ordem`, `linhas` (pontuarPartida preserva a ordem
+             de entrada) e `it.resultados` — a regra reindexa o hist com ele
+             em vez de varrer o array procurando por id, que as Rules do
+             Firestore não sabem fazer (sem macro de lista). */
+          for (k = 0; k < it.resultados.length; k++){ if (it.resultados[k].id === uid){ idx = k; break; } }
+          if (idx < 0) return false;
+          minha = linhas[idx];
+          return refPartida(uid, pid).set({
+            pid: pid, sala: sala, terminadaEm: it.terminadaEm || agora(),
+            n: minha.n, posicao: minha.posicao, saldo: minha.saldo, aproveitamento: minha.aproveitamento,
+            idxResultado: idx
+          }).then(function(){ return somarNoPerfil(uid, minha, pid); })
+            .then(function(){ return true; });
+        });
+      })["catch"](function(){ return false; });
+    };
 
     /* ---------------- minhas salas ----------------
        Onde a pessoa já jogou. Antes isso morava no localStorage, então

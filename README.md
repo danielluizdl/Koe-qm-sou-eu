@@ -39,6 +39,16 @@ não adianta juntar sempre a mesma turma para inflar o rank de todos. Cada
 perfil carrega também o **aproveitamento** — `(N−P)/(N−1)`, média esperada 50%
 com qualquer N — para comparar quem joga muito com quem joga pouco.
 
+Existem dois rankings: o **desta sala** (aba "Classificação" do histórico, só
+com quem já jogou naquela sala) e o **geral** (tela "Pontuação", entre amigos).
+Os dois usam a mesma fórmula — `pontuacao.js` — calculada **no cliente**: sem
+Cloud Function (o projeto é plano Spark; Functions exige Blaze), cada jogador
+grava o **próprio** resultado em `usuarios/{uid}/partidas/{pid}` assim que
+avalia a dificuldade das cartas (passo já obrigatório), e o `firestore.rules`
+cruza o que ele declara com `salas/{codigo}/hist/registro` — que só o host
+escreve — antes de aceitar. Ver `contas.js#registrarResultado` e o comentário
+"Ranking geral sem Cloud Function" em `firestore.rules`.
+
 ## Arquitetura
 
 Sem framework, sem transpilação. ES5 puro, porque é um jogo de festa que precisa
@@ -72,8 +82,10 @@ npm run test:regras  # regras de segurança no emulador (precisa de Java)
 npm run deploy     # build + Firebase Hosting
 ```
 
-A Cloud Function `derivarRank` (`functions/`) exige o **plano Blaze**. Deploy
-separado, depois de `npm install` dentro de `functions/`:
+O ranking geral roda 100% no cliente (ver "Pontuação" acima) — não precisa de
+Cloud Function nem do plano Blaze. `functions/derivarRank` continua no
+repositório como caminho alternativo (Admin SDK, mais forte contra fraude),
+mas **não está implantada**; se um dia o projeto for pro Blaze, o deploy é:
 
 ```bash
 npx firebase deploy --only functions,firestore:rules --project quem-sou-eu-e3e32
@@ -93,15 +105,18 @@ as regras. Este projeto não usa nenhuma.
 
 ## Limites conhecidos
 
-**O host da sala dita o resultado.** O agregado do rank não é mais escrito pelo
-cliente: a Cloud Function `derivarRank` dispara quando o host grava o resultado
-em `salas/{codigo}/hist`, pontua com `pontuacao.js` e escreve
-`usuarios/{uid}/partidas` + `perfis/{uid}` pelo Admin SDK. As regras tiraram
-essas duas escritas do cliente, então inflar o próprio saldo pelo console não
-funciona mais. O que resta: quem é **host** de uma sala escreve o `hist` dela, e
-a função confia nesse resultado — um host mal-intencionado consegue deslocar o
-rank dos participantes daquela sala (não o próprio à toa, e só de quem esteve
-com ele). Fechar isso exigiria validar jogada a jogada.
+**O host da sala dita o resultado.** Sem Cloud Function, cada jogador grava o
+**próprio** resultado em `usuarios/{uid}/partidas/{pid}`, mas `firestore.rules`
+cruza o que ele declara com `salas/{codigo}/hist/registro` — que só o host
+escreve — antes de aceitar: saldo, aproveitamento e posição têm que bater com
+o resultado real, ou a escrita é negada. Não dá pra declarar um saldo do nada
+pelo console. O que resta, exatamente como antes: quem é **host** de uma sala
+escreve o `hist` dela, e a regra confia nesse resultado — um host
+mal-intencionado consegue forjar o rank dos participantes daquela sala (não o
+próprio à toa, e só de quem esteve com ele). Fechar isso exigiria validar
+jogada a jogada. Residual à parte (documentado em `firestore.rules`): nada
+impede repetir a mesma partida real já jogada pra somar de novo — a regra só
+garante que o que é somado corresponde a uma partida que de fato aconteceu.
 
 **O código do Modo Mesa detecta ~98% dos erros de digitação.** Tema e nível
 passaram a ser empacotados juntos (6 bits em vez de 7) e o campo de semente saiu

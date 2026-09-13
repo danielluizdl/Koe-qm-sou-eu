@@ -19,11 +19,15 @@ const html = fs.readFileSync(__dirname + (process.env.JOGO || "/quem-sou-eu-tema
 const open = html.indexOf("<script>") + "<script>".length;
 const close = html.lastIndexOf("</" + "script>");
 let base = html.slice(open, close);
+/* na produção, build.js embute pontuacao.js ANTES do jogo — o jogo usa
+   PONTOS como global (calcClassificacao). Carrega o arquivo real aqui
+   também, senão o sandbox finge que PONTOS existe sem provar nada. */
+const pontuacaoSrc = fs.readFileSync(__dirname + "/pontuacao.js", "utf8");
 
 const tail = "})();";
 const at = base.lastIndexOf(tail);
 if (at < 0) throw new Error("não achei o fim da IIFE");
-const injected = base.slice(0, at) +
+const injected = pontuacaoSrc + "\n" + base.slice(0, at) +
   "globalThis.__t={CriarSalaCliente:CriarSalaCliente,senhaConfere:senhaConfere," +
   "normSenha:normSenha,normNick:normNick,normCodigo:normCodigo,nickValido:nickValido," +
   "calcClassificacao:calcClassificacao,listaPartidas:listaPartidas," +
@@ -330,8 +334,8 @@ async function cenarioCompleto(N) {
   const cl = host.vm().classificacao;
   const vend = cl.find(x => x.nick === "P" + (ordem[0] + 1));
   const last = cl.find(x => x.nick === "P" + (ordem[N - 1] + 1));
-  ok(vend && vend.pontos === N, "N=" + N + ": vencedor faz " + N + " pts, fez " + (vend && vend.pontos));
-  ok(last && last.pontos === 1, "N=" + N + ": último faz 1 pt, fez " + (last && last.pontos));
+  ok(vend && vend.saldo === N - 1, "N=" + N + ": vencedor tem saldo " + (N - 1) + ", fez " + (vend && vend.saldo));
+  ok(last && last.saldo === 1 - N, "N=" + N + ": último tem saldo " + (1 - N) + ", fez " + (last && last.saldo));
   ok(cl[0].nick === "P" + (ordem[0] + 1), "N=" + N + ": líder da classificação é o vencedor");
 
   // jogar de novo -> lobby, cartas limpas
@@ -650,7 +654,7 @@ async function cenarioClassificacaoParcial() {
   const p1c = cl.find(x => x.nick === "P1");
   ok(p4c && p4c.partidas === 1, "quem entrou na 2ª partida tem 1 partida (tem " + (p4c && p4c.partidas) + ")");
   ok(p1c && p1c.partidas === 2, "quem jogou as duas tem 2 partidas");
-  ok(p4c && p4c.pontos === 4, "P4 ganhou a partida de 4 e fez 4 pts");
+  ok(p4c && p4c.saldo === 3, "P4 ganhou a partida de 4 e tem saldo +3 (tem " + (p4c && p4c.saldo) + ")");
   devices.forEach(d => d.client.sair()); p4.client.sair();
 }
 
@@ -693,7 +697,8 @@ function testesPuros() {
   ok(T.normCodigo("123456789") === "1234", "normCodigo: corta em 4");
   ok(T.nickValido("Zé") && !T.nickValido("") && !T.nickValido("nome muito comprido!!"), "nickValido: 1..14");
 
-  // pontuação por posição + desempate por vitórias
+  // pontuação por posição (saldo/aproveitamento de pontuacao.js — mesma
+  // fórmula do rank geral) + desempate por aproveitamento
   const hist = { items: {
     a: { terminadaEm: 1, resultados: [{ id: "x", nick: "X", posicao: 1 }, { id: "y", nick: "Y", posicao: 2 }] },
     b: { terminadaEm: 2, resultados: [{ id: "x", nick: "X", posicao: 1 }, { id: "y", nick: "Y", posicao: 2 }] },
@@ -702,12 +707,20 @@ function testesPuros() {
       { id: "v", nick: "V", posicao: 3 }, { id: "x", nick: "X", posicao: 4 }] },
   } };
   const cl = T.calcClassificacao(hist);
-  const X = cl.find(o => o.id === "x"), Y = cl.find(o => o.id === "y"), V = cl.find(o => o.id === "v");
-  ok(X.pontos === 2 + 2 + 1, "classificação: X = 2+2 (1º de 2) + 1 (4º de 4) = 5");
-  ok(Y.pontos === 1 + 1 + 3, "classificação: Y = 1+1 (2º de 2) + 3 (2º de 4) = 5");
-  ok(V.pontos === 2 && V.partidas === 1, "classificação: V = 2 pts, 1 partida");
-  ok(X.media === 2 && Y.media === 2, "classificação: colocação média igual (2.0)");
-  ok(cl[0].id === "x" && cl[1].id === "y", "classificação: empate em pontos e média desempata por vitórias (X: 2, Y: 0)");
+  const X = cl.find(o => o.id === "x"), Y = cl.find(o => o.id === "y"), V = cl.find(o => o.id === "v"), W = cl.find(o => o.id === "w");
+  ok(X.saldo === -1, "classificação: X = +1+1 (1º de 2, duas vezes) - 3 (4º de 4) = -1, fez " + X.saldo);
+  ok(Y.saldo === -1, "classificação: Y = -1-1 (2º de 2, duas vezes) + 1 (2º de 4) = -1, fez " + Y.saldo);
+  ok(V.saldo === -1 && V.partidas === 1, "classificação: V = -1 de saldo (3º de 4), 1 partida");
+  ok(Math.abs(X.aproveitamento - 2 / 3) < 1e-9 && Math.abs(Y.aproveitamento - 2 / 9) < 1e-9,
+     "classificação: aproveitamento médio X=2/3, Y=2/9, veio X=" + X.aproveitamento + " Y=" + Y.aproveitamento);
+  // W ganhou uma partida de 4 sozinho (+3): sai na frente de X/Y mesmo eles
+  // tendo "mais pontos" na fórmula antiga — é exatamente o que o saldo
+  // corrige (juntar sempre a mesma dupla pequena não infla ninguém).
+  // X, Y e V empatam em saldo (-1); desempate por aproveitamento:
+  // X (2/3) > V (1/3, só 1 partida) > Y (2/9).
+  ok(cl[0].id === "w", "classificação: W (saldo +3, 1 partida) lidera, veio " + cl.map(o => o.id).join(","));
+  ok(cl[1].id === "x" && cl[2].id === "v" && cl[3].id === "y",
+     "classificação: empate em saldo (-1) desempata por aproveitamento: X > V > Y, veio " + cl.map(o => o.id).join(","));
 }
 
 async function main() {

@@ -11,6 +11,10 @@ const vm = require("vm");
 const html = fs.readFileSync(__dirname + (process.env.JOGO || "/quem-sou-eu-temas.html"), "utf8");
 const headHtml = html.slice(0, html.indexOf("<script>"));
 const scriptSrc = html.slice(html.indexOf("<script>") + 8, html.lastIndexOf("</" + "script>"));
+/* na produção, build.js embute pontuacao.js ANTES do jogo (SCRIPTS em
+   build.js) — o jogo usa PONTOS como global. Carrega o arquivo real
+   aqui também, senão o sandbox finge que PONTOS existe sem provar nada. */
+const pontuacaoSrc = fs.readFileSync(__dirname + "/pontuacao.js", "utf8");
 
 /* ids das telas estáticas (para querySelectorAll('.screen') e show()) */
 const screenIds = [];
@@ -152,8 +156,9 @@ function makeDb() {
 
 /* ---------- aparelho: sandbox com o app completo ---------- */
 const compiled = new vm.Script(
+  pontuacaoSrc + "\n" +
   scriptSrc.slice(0, scriptSrc.lastIndexOf("})();")) +
-  "globalThis.__t={CriarSalaCliente:CriarSalaCliente};" +
+  "globalThis.__t={CriarSalaCliente:CriarSalaCliente,slugCarta:slugCarta};" +
   "globalThis.__ui={get SC(){return SC;},get MESA(){return MESA;},get modoAtivo(){return modoAtivo;}," +
   "get avaliarLinhas(){return avaliarLinhas;}," +
   "telaVisivel:telaVisivel,renderSala:renderSala};})();",
@@ -230,10 +235,27 @@ async function main() {
   ok(tela() === "s-lobby" && A.ui.SC.vm().membros.length === 3, "lobby do host mostra 3 membros em tempo real");
   ok(A.ui.SC.vm().numParticipantes === 3, "3 participantes marcados por padrão");
 
+  // "pronto": cada convidado marca a própria prontidão (host não mexe
+  // nela) — soma no vm do host, mas não trava o "Começar".
+  ok(A.ui.SC.vm().membros.every(m => m.ehHost || m.pronto === false), "ninguém começa marcado como pronto");
+  ok(A.ui.SC.vm().numProntos === 0 && A.ui.SC.vm().numConvidados === 2, "0 de 2 convidados prontos no começo");
+  await cb.ficarPronto(true); await settle();
+  ok(A.ui.SC.vm().numProntos === 1, "Bia se marca pronta, o host vê o contador subir");
+  ok(g("lobby-sub").textContent.indexOf("1 de 2 prontos") >= 0,
+     "subtítulo do host mostra quantos convidados estão prontos, veio: " + g("lobby-sub").textContent);
+  ok(g("lobby-comecar").disabled === false, "prontidão não trava o botão de começar");
+
   // 3. host começa
   click("lobby-comecar");
   await settle();
   ok(tela() === "s-carta", "comecar leva o host pra s-carta, foi pra " + tela());
+
+  // Selo de dificuldade: semeia o agregado cartas/{slug} da carta da Bia
+  // ANTES de qualquer revelação — é o histórico de OUTRAS partidas, tem
+  // que já existir quando o app buscar pela primeira vez.
+  const cartaBia = cb.vm().minhaCarta;
+  ok(!!cartaBia, "carta da Bia já dada assim que a partida começa, veio: " + cartaBia);
+  await DB.doc("cartas/" + A.T.slugCarta(cartaBia)).set({ nome: cartaBia, soma: 12, contagem: 4, mediaCache: 3 });
 
   // 4. host revela pela UI
   click("carta-mostrar");
@@ -253,6 +275,14 @@ async function main() {
   await settle();
   ok(tela() === "s-play" && A.ui.SC.vm().fase === "jogando", "continuar leva pra s-play; todos revelaram -> jogando");
   ok(g("play-mesa-sec").hidden === false, "lista de adversários liberada depois de todos mostrarem");
+
+  // Selo de dificuldade: lê o agregado cartas/{slug} (histórico de OUTRAS
+  // partidas, gravado ANTES desta) e mostra junto do nome de quem já mostrou.
+  A.ui.renderSala();
+  await settle();
+  const opHtmlSelo = g("play-oponentes").innerHTML;
+  ok(opHtmlSelo.indexOf("dificuldade 3.0/5 (4 avaliações)") >= 0,
+     "selo de dificuldade aparece junto da carta de quem já mostrou, veio: " + opHtmlSelo);
 
   // C7.1: esconder/mostrar "Na mesa" — some só a lista, o botão continua ali
   ok(g("play-oponentes").hidden === false, "lista de oponentes visível por padrão");
@@ -308,11 +338,34 @@ async function main() {
   ok(tela() === "s-fim", "última pessoa acerta -> s-fim, foi pra " + tela());
   ok(g("fim-podio").querySelectorAll(".row").length === 3, "pódio pintado com 3 linhas");
 
+  // Selo também no pódio, carta da noite (a única com dado é a da Bia) e recap
+  const fimPodioHtml = g("fim-podio").innerHTML;
+  ok(fimPodioHtml.indexOf("dificuldade 3.0/5 (4 avaliações)") >= 0,
+     "pódio também mostra o selo de dificuldade, veio: " + fimPodioHtml);
+  ok(g("fim-carta-noite").hidden === false, "carta da noite aparece quando alguma carta da rodada tem dado");
+  ok(g("fim-carta-noite").textContent.indexOf("Carta da noite: " + cartaBia) === 0,
+     "carta da noite escolhe a única com selo (a da Bia), veio: " + g("fim-carta-noite").textContent);
+  ok(g("fim-recap-wrap").hidden === false, "recap aparece quando alguém acertou com relógio rodando");
+  const recapHtml = g("fim-recap").innerHTML;
+  ok(recapHtml.indexOf("Mais rápido") >= 0 && recapHtml.indexOf("Ana") >= 0,
+     "recap mostra quem acertou mais rápido (a host, Ana, acertou primeiro), veio: " + recapHtml);
+  ok(recapHtml.indexOf("Disputa mais apertada") >= 0,
+     "recap mostra a disputa mais apertada com 3 pessoas tendo acertado, veio: " + recapHtml);
+
   // 6. histórico pela UI
   click("fim-hist");
   ok(tela() === "s-hist", "fim-hist abre o histórico");
   click("aba-partidas"); click("aba-geral");   // trocar abas não estoura
   ok(g("hist-geral").querySelectorAll(".row").length === 3, "classificação geral com 3 jogadores");
+  // ranking DESTA sala tem que usar a mesma fórmula do rank geral (saldo
+  // sobre o esperado), não "pontos" (N-P+1) — 3 jogadores, 1º/2º/3º:
+  // saldo é +2/0/-2, sempre soma zero, nunca "pts".
+  const histGeralHtml = g("hist-geral").innerHTML;
+  ok(histGeralHtml.indexOf("+2 de saldo") >= 0 && histGeralHtml.indexOf("100% de aproveitamento") >= 0,
+     "1º lugar (Ana) mostra saldo +2 e 100% de aproveitamento, veio: " + histGeralHtml);
+  ok(histGeralHtml.indexOf("-2 de saldo") >= 0, "3º lugar (Cau) mostra saldo -2, veio: " + histGeralHtml);
+  ok(histGeralHtml.indexOf(" pts ") < 0 && histGeralHtml.indexOf("média") < 0,
+     "não usa mais a fórmula antiga de pontos/média, veio: " + histGeralHtml);
   ok(g("hist-partidas").querySelectorAll(".row").length >= 1, "aba Partidas lista a partida jogada");
   click("hist-voltar");
   ok(tela() === "s-fim", "voltar do histórico volta pro fim");
@@ -325,11 +378,25 @@ async function main() {
   const linhas = A.ui.avaliarLinhas;
   ok(linhas.length === 3, "uma linha por carta em jogo (host, Bia, Cau), veio " + linhas.length);
   ok(g("avaliar-ok").disabled === true, "botão trava até avaliar todas");
+
+  // bug real reportado: o heartbeat de presença (a cada 45s) chega como
+  // snapshot da coleção de jogadores e, sem essa trava, te tirava da tela
+  // de avaliação no meio do caminho — ninguém conseguia terminar de avaliar.
+  await DB.doc("salas/" + codigo + "/jogadores/" + cb.meuId).update({ vistoEm: Date.now() });
+  await settle();
+  ok(tela() === "s-avaliar", "um snapshot no meio da avaliação não te tira da tela, foi pra " + tela());
+  ok(A.ui.avaliarLinhas === linhas, "as linhas da avaliação não são reconstruídas à toa por causa do snapshot");
+
   linhas[0].input.value = "0"; linhas[0].input._fire("input");
   ok(g("avaliar-ok").disabled === true, "ainda faltam duas");
   linhas[1].input.value = "3"; linhas[1].input._fire("input");
   linhas[2].input.value = "5"; linhas[2].input._fire("input");
   ok(g("avaliar-ok").disabled === false, "todas tocadas, libera o botão");
+
+  // simula a Bia chegando ao fim desta partida marcada como pronta (de uma
+  // eventual repactuação futura) — "jogar de novo" tem que zerar isso de
+  // novo, senão ela nasceria "pronta" sem ter tocado em nada na 2ª partida.
+  await DB.doc("salas/" + codigo + "/jogadores/" + cb.meuId).update({ pronto: true });
 
   click("avaliar-ok");
   await settle();
@@ -339,11 +406,71 @@ async function main() {
   const votos = Object.keys(dump).filter(k => /^cartas\/[^/]+\/votos\/[^/]+$/.test(k));
   ok(slugsCarta.length === 3, "um agregado por carta avaliada (3), veio " + slugsCarta.length);
   ok(votos.length === 3, "um voto por carta avaliada (3), veio " + votos.length);
-  ok(slugsCarta.every(k => dump[k].contagem === 1 && dump[k].soma === dump[k].mediaCache),
-     "cada agregado nasceu com contagem 1 e média = nota única, veio: " + JSON.stringify(slugsCarta.map(k => dump[k])));
+  const slugBia = "cartas/" + A.T.slugCarta(cartaBia);
+  ok(slugsCarta.filter(k => k !== slugBia).every(k => dump[k].contagem === 1 && dump[k].soma === dump[k].mediaCache),
+     "cada agregado novo nasceu com contagem 1 e média = nota única, veio: " + JSON.stringify(slugsCarta.map(k => dump[k])));
+  ok(dump[slugBia].contagem === 5 && dump[slugBia].soma === 15,
+     "o agregado semeado da Bia soma em cima do que já tinha (4 -> 5 votos), veio: " + JSON.stringify(dump[slugBia]));
 
-  // 7. jogar de novo
-  ok(A.ui.SC.vm().minhaCarta == null, "carta zerada");
+  // 7. jogar de novo — de verdade, até o fim, pra pegar os dois bugs
+  // reportados: "jogar de novo" ficando apagado pra sempre depois da 1ª
+  // partida, e a avaliação deixando de ser cobrada na 2ª.
+  ok(A.ui.SC.vm().minhaCarta == null, "carta zerada ao voltar pro lobby");
+  ok(A.ui.SC.vm().numProntos === 0, "prontidão reseta pra partida nova (era 1 de 2 antes)");
+  ok(g("lobby-comecar").disabled === false, "começar liberado de novo no lobby");
+
+  click("lobby-comecar");
+  await settle();
+  ok(tela() === "s-carta", "2ª partida: comecar leva pra s-carta de novo");
+  click("carta-mostrar");
+  flushCountdown();
+  await cb.esconder(); await cc.esconder(); await settle();
+  click("carta-hide");
+  await settle();
+  click("passar-ok");
+  await settle();
+  ok(tela() === "s-play" && A.ui.SC.vm().fase === "jogando", "2ª partida: chega em jogando de novo");
+
+  const cartaHost2 = A.ui.SC.vm().minhaCarta;
+  g("senha-input").value = cartaHost2;
+  click("senha-ok");
+  await cb.palpite(cb.vm().minhaCarta);
+  await cc.palpite(cc.vm().minhaCarta);
+  await settle();
+  ok(tela() === "s-fim", "2ª partida chega no fim de novo, foi pra " + tela());
+  ok(g("fim-denovo").hidden === false && g("fim-denovo").disabled === false,
+     "jogar de novo NÃO fica apagado na 2ª partida (bug reportado)");
+
+  click("fim-denovo");
+  await settle();
+  ok(tela() === "s-avaliar", "2ª partida: avaliação obrigatória de novo, foi pra " + tela());
+  const linhas2 = A.ui.avaliarLinhas;
+  ok(linhas2.length === 3 && linhas2 !== linhas, "linhas novas pra rodada nova, não as da partida passada");
+  linhas2.forEach(l => { l.input.value = "2"; l.input._fire("input"); });
+  ok(g("avaliar-ok").disabled === false, "libera de novo com todas tocadas");
+  click("avaliar-ok");
+  await settle();
+  ok(tela() === "s-lobby", "2ª avaliação feita: volta pro lobby de novo, foi pra " + tela());
+
+  // bug real reportado: quem fecha o app entre o fim da partida e a
+  // próxima nunca mais era perguntado, porque a avaliação só existia em
+  // memória (esquecia assim que a página recarregava). Simula esse
+  // esquecimento — localStorage sem o registro da 2ª partida, "reabri o
+  // app antes de ter avaliado" — e confirma que o app força a avaliação
+  // de novo mesmo com a sala já de volta ao lobby (fase !== "fim").
+  A.mem.delete("quemsoueu:avaliado:" + codigo);
+  A.ui.renderSala();
+  await settle();
+  ok(tela() === "s-avaliar", "reconectar sem ter avaliado força a avaliação de novo, foi pra " + tela());
+  ok(A.ui.avaliarLinhas.length === 3, "as mesmas 3 cartas da partida que ficou pra trás");
+  A.ui.avaliarLinhas.forEach(l => { l.input.value = "1"; l.input._fire("input"); });
+  click("avaliar-ok");
+  await settle();
+  ok(tela() === "s-lobby", "avaliada nesse reencontro, volta a seguir a sala normalmente, foi pra " + tela());
+
+  const dump2 = DB._dump();
+  const slugsCarta2 = Object.keys(dump2).filter(k => /^cartas\/[^/]+$/.test(k));
+  const votos2 = Object.keys(dump2).filter(k => /^cartas\/[^/]+\/votos\/[^/]+$/.test(k));
 
   // 8. apagar sala (2 toques)
   click("lobby-apagar");
@@ -353,7 +480,7 @@ async function main() {
   /* cartas/* (item 8) não é escopo da sala — a dificuldade acumula em
      TODAS as partidas já jogadas, então sobrevive de propósito ao
      apagar; só o que era da sala (sala + jogadores + hist) some. */
-  ok(DB._count() === slugsCarta.length + votos.length,
+  ok(DB._count() === slugsCarta2.length + votos2.length,
      "apagar limpa a sala e deixa só o agregado de dificuldade, veio " + DB._count() + " docs");
 
   // 9. sem db (link público): "modo mesa" é o padrão, clássico continua acessível

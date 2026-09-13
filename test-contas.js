@@ -276,6 +276,62 @@ t("email sem arroba é inválido", !emailValido("ab.co"));
     JSON.stringify(rec));
 }
 
+/* ================= 5b. Ranking geral sem Cloud Function (opção B) =================
+   Mesmo hist de sempre, mas gravado pelo caminho NOVO: cada jogador
+   registra o PRÓPRIO resultado (A.registrarResultado), sem Admin SDK. */
+async function registrarTodos(db, A, pid, sala, ordem){
+  const resultados = ordem.map((o, i) => ({ id: o.id, nick: o.id, carta: "c" + i, posicao: i + 1 }));
+  const ref = db.doc("salas/" + sala + "/hist/registro");
+  const snap = await ref.get();
+  const items = (snap.exists && snap.data().items) || {};
+  items[pid] = { terminadaEm: Date.now(), mask: 1, nivel: 0, resultados };
+  await ref.set({ items });
+  const out = {};
+  for (const o of ordem) out[o.id] = await A.registrarResultado(o.id, sala, pid);
+  return out;
+}
+{
+  const db = makeDb();
+  const A = CriarContas(db);
+  await A.criar("ana", { nick: "ana", nome: "Ana Teste", email: "a@b.co" });
+
+  const ordem = [{ id:"ana", chave:1 }, { id:"bia", chave:2 }, { id:"caio", chave:3 }];
+  const res1 = await registrarTodos(db, A, "p1", "FESTA", ordem);
+  t("registra quem tem conta", res1.ana === true, JSON.stringify(res1));
+  t("quem não tem conta não registra (sem perfil pra somar)",
+    res1.bia === false && res1.caio === false, JSON.stringify(res1));
+
+  let p = await A.perfil("ana");
+  t("agregado conta a partida", p.partidas === 1);
+  t("agregado conta a vitória", p.vitorias === 1);
+  t("vencer de 3 dá saldo +2", p.saldo === 2, String(p.saldo));
+  t("aproveitamento somado é 1", Math.abs(p.somaAprov - 1) < 1e-9);
+  t("guarda qual foi a última partida aplicada", p.ultimaPartidaId === "p1");
+
+  const partida = await db.doc("usuarios/ana/partidas/p1").get();
+  t("a partida imutável foi gravada", partida.exists && partida.data().saldo === 2);
+  t("guarda o índice no resultado (é o que a regra reindexa)", partida.data().idxResultado === 0);
+
+  const deNovo = await A.registrarResultado("ana", "FESTA", "p1");
+  t("registrar de novo a MESMA partida é no-op (já existe)", deNovo === false);
+  p = await A.perfil("ana");
+  t("reprocessar não dobra o saldo", p.partidas === 1 && p.saldo === 2, String(p.saldo));
+
+  /* segunda partida, agora em último numa mesa de 8 */
+  const o8 = [];
+  for (let i = 0; i < 7; i++) o8.push({ id:"x"+i, chave:i });
+  o8.push({ id:"ana", chave:7 });
+  await registrarTodos(db, A, "p2", "FESTA", o8);
+  p = await A.perfil("ana");
+  t("2 partidas no agregado", p.partidas === 2);
+  t("último de 8 custa -7 (saldo 2-7=-5)", p.saldo === -5, String(p.saldo));
+
+  t("quem nem jogou essa partida não registra nada",
+    (await A.registrarResultado("dudu", "FESTA", "p2")) === false);
+  t("sala ou pid inexistente é no-op, não propaga erro",
+    (await A.registrarResultado("ana", "SALA-FANTASMA", "px")) === false);
+}
+
 /* ================= 6. Rank entre amigos ================= */
 {
   const db = makeDb();
