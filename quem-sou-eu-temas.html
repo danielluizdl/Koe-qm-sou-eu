@@ -2,34 +2,36 @@
 
 <style>
   :root{
-    --paper:#EAEEE3; --paper-2:#DFE5D4; --card:#FFFFFF;
-    --ink:#16211A; --ink-2:#54685A; --ink-3:#7C8C80;
-    --line:#C6D0B9; --line-2:#AFBCA1;
-    --accent:#C92B4C; --accent-2:#A31F3B; --on-accent:#FFF3F5;
+    --paper:#F6F6FB; --paper-2:#ECECF6; --card:#FFFFFF;
+    --ink:#1C1B29; --ink-2:#6B6878; --ink-3:#9C98A9;
+    --line:#E3E1EC; --line-2:#CFCCDD;
+    --accent:#5B5BD6; --accent-2:#4040B8; --on-accent:#FFFFFF;
+    --accent-soft:color-mix(in srgb, var(--accent) 12%, var(--card));
     --ok:#3E8E5A; --ok-soft:#E4EFE4;
-    --dot:rgba(22,33,26,.13); --shadow:rgba(22,33,26,.18);
-    --f-display:"Arial Black","Arial Bold",Arial,ui-sans-serif,system-ui,sans-serif;
+    --dot:rgba(28,27,41,.10); --shadow:rgba(28,27,41,.14);
+    --f-display:"Baloo 2","Arial Black","Arial Bold",Arial,ui-sans-serif,system-ui,sans-serif;
     --f-ui:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     --f-mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
     --pad:clamp(18px,5vw,32px); --r:18px; --r-lg:26px;
+    --pop:.18s cubic-bezier(.34,1.56,.64,1);
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --paper:#121A14; --paper-2:#1A241B; --card:#212C22;
-      --ink:#E7ECDE; --ink-2:#A2B09A; --ink-3:#7F8D78;
-      --line:#2E3C30; --line-2:#3D4E3F;
-      --accent:#FF5C7C; --accent-2:#C43D58; --on-accent:#2B0510;
+      --paper:#16151D; --paper-2:#1F1E28; --card:#252430;
+      --ink:#EDEDF5; --ink-2:#A6A3B8; --ink-3:#7C7991;
+      --line:#34323F; --line-2:#443F52;
+      --accent:#8484EE; --accent-2:#5B5BD6; --on-accent:#15131F;
       --ok:#57C98C; --ok-soft:#1E3327;
-      --dot:rgba(231,236,222,.10); --shadow:rgba(0,0,0,.55);
+      --dot:rgba(237,237,245,.09); --shadow:rgba(0,0,0,.55);
     }
   }
   :root[data-theme="dark"]{
-    --paper:#121A14; --paper-2:#1A241B; --card:#212C22;
-    --ink:#E7ECDE; --ink-2:#A2B09A; --ink-3:#7F8D78;
-    --line:#2E3C30; --line-2:#3D4E3F;
-    --accent:#FF5C7C; --accent-2:#C43D58; --on-accent:#2B0510;
+    --paper:#16151D; --paper-2:#1F1E28; --card:#252430;
+    --ink:#EDEDF5; --ink-2:#A6A3B8; --ink-3:#7C7991;
+    --line:#34323F; --line-2:#443F52;
+    --accent:#8484EE; --accent-2:#5B5BD6; --on-accent:#15131F;
     --ok:#57C98C; --ok-soft:#1E3327;
-    --dot:rgba(231,236,222,.10); --shadow:rgba(0,0,0,.55);
+    --dot:rgba(237,237,245,.09); --shadow:rgba(0,0,0,.55);
   }
 
   *{box-sizing:border-box}
@@ -90,16 +92,16 @@
   .btn{
     display:flex;align-items:center;justify-content:center;gap:10px;
     min-height:58px;padding:0 22px;width:100%;
-    border:none;border-radius:var(--r);
+    border:none;border-radius:999px;
     background:var(--accent);color:var(--on-accent);
     font-weight:800;font-size:1.06rem;cursor:pointer;
-    box-shadow:0 3px 0 var(--accent-2);
-    transition:transform .08s ease, box-shadow .08s ease;
+    box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 20px color-mix(in srgb,var(--accent) 35%,transparent);
+    transition:transform var(--pop), box-shadow .08s ease, background .08s ease;
     touch-action:manipulation;
   }
-  .btn:active{transform:translateY(3px);box-shadow:0 0 0 var(--accent-2)}
+  .btn:active{transition-duration:.05s;transform:scale(.94);background:var(--accent-2)}
   .btn.ghost{background:transparent;color:var(--ink);border:2px solid var(--line-2);box-shadow:none}
-  .btn.ghost:active{transform:translateY(2px);background:var(--paper-2)}
+  .btn.ghost:active{transition-duration:.05s;transform:scale(.94);background:var(--paper-2)}
   .btn[disabled]{opacity:.4;pointer-events:none}
   .linkbtn{
     background:none;border:none;padding:10px 4px;color:var(--ink-2);
@@ -111,18 +113,20 @@
   .shortcuts button{
     border:1.5px solid var(--line-2);background:var(--paper-2);color:var(--ink-2);
     border-radius:999px;padding:7px 14px;font-size:.8rem;font-weight:700;cursor:pointer;min-height:36px;
+    transition:background .08s ease, transform var(--pop);
   }
-  .shortcuts button:active{background:var(--line)}
+  .shortcuts button:active{transition-duration:.05s;background:var(--line);transform:scale(.93)}
   .shortcuts button[aria-pressed="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--paper-2));color:var(--ink)}
 
   .decks{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
   .deck{
     position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;
     min-height:60px;padding:10px 34px 10px 12px;text-align:left;
-    background:var(--card);border:2px solid var(--line);border-radius:var(--r);
-    cursor:pointer;transition:border-color .12s ease, transform .08s ease;
+    background:var(--card);border:2px solid transparent;border-radius:var(--r);
+    box-shadow:0 1px 2px rgba(0,0,0,.03),0 4px 12px var(--shadow);
+    cursor:pointer;transition:border-color .12s ease, transform var(--pop);
   }
-  .deck:active{transform:scale(.98)}
+  .deck:active{transition-duration:.05s;transform:scale(.95)}
   .deck[aria-pressed="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--card))}
   .deck b{font-size:.9rem;font-weight:800;line-height:1.15}
   .deck span{font-size:.72rem;color:var(--ink-3);font-variant-numeric:tabular-nums}
@@ -137,17 +141,19 @@
   .seg button{
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
     min-height:68px;padding:8px 6px;
-    background:var(--card);border:2px solid var(--line);border-radius:var(--r);
-    cursor:pointer;transition:border-color .12s ease, transform .08s ease;
+    background:var(--card);border:2px solid transparent;border-radius:var(--r);
+    box-shadow:0 1px 2px rgba(0,0,0,.03),0 4px 12px var(--shadow);
+    cursor:pointer;transition:border-color .12s ease, transform var(--pop);
   }
-  .seg button:active{transform:scale(.97)}
+  .seg button:active{transition-duration:.05s;transform:scale(.94)}
   .seg button[aria-pressed="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--card))}
   .seg b{font-size:.9rem;font-weight:800}
   .seg span{font-size:.68rem;color:var(--ink-3);text-align:center;line-height:1.25}
 
   .stepper{
     display:flex;align-items:center;justify-content:space-between;
-    background:var(--card);border:2px solid var(--line);border-radius:var(--r);padding:8px 10px;
+    background:var(--card);border:none;border-radius:var(--r);padding:8px 10px;
+    box-shadow:0 1px 2px rgba(0,0,0,.03),0 4px 12px var(--shadow);
   }
   .stepper button{
     width:52px;height:52px;border-radius:13px;border:none;
@@ -183,17 +189,18 @@
 
   .slots{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
   .slots button{
-    aspect-ratio:1;border:2px solid var(--line);border-radius:var(--r);
+    aspect-ratio:1;border:2px solid transparent;border-radius:var(--r);
     background:var(--card);cursor:pointer;color:var(--ink);
+    box-shadow:0 1px 2px rgba(0,0,0,.03),0 4px 12px var(--shadow);
     font-family:var(--f-display);font-size:1.7rem;letter-spacing:-.02em;
-    display:flex;align-items:center;justify-content:center;transition:transform .08s ease;
+    display:flex;align-items:center;justify-content:center;transition:transform var(--pop);
   }
-  .slots button:active{transform:scale(.94);border-color:var(--accent)}
+  .slots button:active{transition-duration:.05s;transform:scale(.9);border-color:var(--accent)}
 
   .card-wrap{flex:1;display:flex;flex-direction:column;gap:14px;min-height:0}
   .card{
     flex:1;min-height:0;position:relative;border-radius:var(--r-lg);
-    background:var(--card);box-shadow:0 10px 30px var(--shadow),0 2px 0 var(--line);
+    background:var(--card);box-shadow:0 10px 30px var(--shadow);
     display:flex;align-items:center;justify-content:center;
     padding:20px;overflow:hidden;text-align:center;
   }
@@ -232,6 +239,27 @@
     opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:50;max-width:86vw;text-align:center;
   }
   .toast.on{opacity:1}
+
+  /* ---- revelação de posição ----
+     Só o 1º/2º/3º/último ganham tela cheia; o meio-de-tabela continua
+     no toast discreto — destaque demais pra todo mundo não destaca nada. */
+  .reveal{
+    position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;background:color-mix(in srgb, var(--ink) 60%, transparent);
+    opacity:0;pointer-events:none;transition:opacity .18s ease;z-index:60;
+  }
+  .reveal.on{opacity:1}
+  .reveal-icon{
+    font-size:5.2rem;line-height:1;transform:scale(.4);opacity:0;
+    transition:transform .4s cubic-bezier(.34,1.56,.64,1),opacity .3s ease;
+  }
+  .reveal.on .reveal-icon{transform:scale(1);opacity:1}
+  .reveal-msg{
+    color:var(--paper);font-family:var(--f-display);font-size:1.5rem;
+    text-align:center;padding:0 24px;text-transform:uppercase;text-wrap:balance;
+  }
+  .confete{position:fixed;top:-20px;width:9px;height:14px;border-radius:2px;animation:confete-cair linear forwards;z-index:59}
+  @keyframes confete-cair{ to{ transform:translateY(105vh) rotate(540deg); opacity:.9 } }
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:34px}
   .back{background:none;border:none;padding:6px 10px 6px 0;cursor:pointer;color:var(--ink-2);font-weight:700;font-size:.92rem}
 
@@ -243,10 +271,10 @@
     border:2px solid var(--line-2);background:var(--card);color:var(--ink);
     font-family:var(--f-display);font-size:1.05rem;line-height:1;
     display:grid;place-items:center;padding:0;
-    transition:border-color .15s,transform .1s;
+    transition:border-color .15s,transform var(--pop);
   }
   .avatar:hover{border-color:var(--accent)}
-  .avatar:active{transform:scale(.94)}
+  .avatar:active{transition-duration:.05s;transform:scale(.88)}
   .avatar:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 
   .saudacao{
@@ -258,26 +286,37 @@
   /* ---- ambientes: os destinos da home ----
      Reaproveita .row. O que muda é o chevron e o subtítulo, que carrega
      número de verdade em vez de rótulo genérico. */
-  .ambientes{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+  /* Só 4 ações fixas — sem isso o painel fica um bloquinho colado no
+     topo com metade da tela vazia embaixo. */
+  #home-painel{display:flex;flex-direction:column;flex:1;min-height:0}
+  #home-painel .ambientes{flex:1;align-content:center}
+  /* Grade de blocos tipo "ícone de app", não lista com seta — o texto
+     fica ancorado embaixo do bloco, sobra respiro em cima. */
+  .ambientes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
   .ambiente{
-    display:flex;align-items:center;gap:14px;width:100%;text-align:left;cursor:pointer;
-    background:var(--card);border:2px solid var(--line);border-radius:var(--r);
-    padding:16px 18px;min-height:72px;color:inherit;
-    transition:border-color .15s,transform .1s;
+    display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;
+    width:100%;text-align:left;cursor:pointer;position:relative;
+    background:var(--card);border:none;border-radius:var(--r-lg);
+    box-shadow:0 1px 2px rgba(0,0,0,.03),0 8px 20px var(--shadow);
+    padding:18px;min-height:126px;color:inherit;
+    transition:transform var(--pop), box-shadow .1s ease;
   }
-  .ambiente:hover{border-color:var(--line-2)}
-  .ambiente:active{transform:scale(.99)}
+  .ambiente:active{transition-duration:.05s;transform:scale(.94)}
   .ambiente:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
-  .ambiente.destaque{border-color:var(--accent);background:var(--accent-soft)}
-  .ambiente .txt{flex:1;min-width:0}
+  .ambiente.destaque{
+    background:var(--accent);color:var(--on-accent);
+    box-shadow:0 1px 2px rgba(0,0,0,.06),0 10px 24px color-mix(in srgb,var(--accent) 45%,transparent);
+  }
+  .ambiente .txt{width:100%}
   .ambiente b{display:block;font-family:var(--f-display);font-size:1.05rem;
     letter-spacing:-.01em;text-transform:uppercase}
   .ambiente .sub{
-    display:block;color:var(--ink-3);font-size:.85rem;line-height:1.35;margin-top:3px;
+    display:block;color:var(--ink-3);font-size:.82rem;line-height:1.3;margin-top:3px;
   }
+  .ambiente.destaque .sub{color:color-mix(in srgb,var(--on-accent) 78%,transparent)}
   .ambiente .sub:empty{display:none}
-  .ambiente .seta{color:var(--ink-3);font-size:1.3rem;flex:none;line-height:1}
-  .ambiente.destaque .seta{color:var(--accent)}
+  .ambiente .seta{position:absolute;top:14px;right:14px;color:var(--ink-3);font-size:1.1rem;line-height:1;opacity:.55}
+  .ambiente.destaque .seta{color:var(--on-accent);opacity:.75}
 
   /* ---- o ID, feito pra ser copiado ---- */
   .idbox{
@@ -332,11 +371,12 @@
   .rows:empty{display:none}
   .row{
     display:flex;align-items:center;gap:12px;
-    background:var(--card);border:2px solid var(--line);border-radius:var(--r);
+    background:var(--card);border:2px solid transparent;border-radius:var(--r);
+    box-shadow:0 1px 2px rgba(0,0,0,.03),0 3px 10px var(--shadow);
     padding:11px 14px;min-height:52px;text-align:left;width:100%;
   }
-  button.row{cursor:pointer}
-  button.row:active{transform:scale(.99)}
+  button.row{cursor:pointer;transition:transform var(--pop)}
+  button.row:active{transition-duration:.05s;transform:scale(.96)}
   .row .grow{flex:1;min-width:0}
   .row b{font-weight:800;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .row .sub{color:var(--ink-3);font-size:.82rem;line-height:1.3}
@@ -364,9 +404,9 @@
   .dificuldade-nota{
     width:44px;height:44px;border:none;border-radius:12px;color:#fff;
     font-weight:800;font-size:1.05rem;cursor:pointer;touch-action:manipulation;
-    opacity:.5;transition:opacity .08s ease,transform .08s ease;
+    opacity:.5;transition:opacity .08s ease,transform var(--pop);
   }
-  .dificuldade-nota:active{transform:translateY(2px)}
+  .dificuldade-nota:active{transition-duration:.05s;transform:scale(.88)}
   .dificuldade-nota[aria-pressed="true"]{opacity:1;box-shadow:0 0 0 3px var(--paper) inset}
 
   @media (prefers-reduced-motion: reduce){
@@ -382,9 +422,9 @@
     <div class="mid" id="home-capa">
       <div>
         <p class="eyebrow">Jogo de mesa para celular</p>
-        <h1 class="logo">Quem<br>sou<em>eu?</em></h1>
+        <h1 class="logo"><em>Koé,</em>Quem<br>sou<em>eu?</em></h1>
       </div>
-      <p class="lede">Celular na testa e ninguém te conta quem tu é. A mesa só dá dica — e zoa a tua cara até cair a ficha.</p>
+      <p class="lede">Celular na testa e boa sorte. A mesa só pode te ajudar com dicas!</p>
       <p class="note" id="home-tally"></p>
     </div>
 
@@ -438,6 +478,7 @@
     <p class="note" id="salas-vazio" hidden>
       Você ainda não entrou em nenhuma sala. Crie uma ou entre com um código.
     </p>
+    <div class="foot"><button class="btn ghost" id="salas-criar">+ Criar sala</button></div>
   </section>
 
   <section class="screen" id="s-sala-detalhe">
@@ -973,6 +1014,10 @@
 </div>
 
 <div class="toast" id="toast" role="status"></div>
+<div class="reveal" id="reveal" hidden role="status">
+  <div class="reveal-icon" id="reveal-icon"></div>
+  <div class="reveal-msg" id="reveal-msg"></div>
+</div>
 
 <script>
 /* ============================================================
@@ -986,8 +1031,8 @@
 var GROUPS = [
 
 { id:"animacao",
-f:"Bob Esponja|Patrick Estrela|Lula Molusco|Sr. Siriguejo|Plankton|Sandy Bochechas|Mickey Mouse|Pato Donald|Pateta|Minnie|Pluto|Tio Patinhas|Pernalonga|Patolino|Frajola|Piu-Piu|Papa-Léguas|Coiote|Taz|Speedy Gonzales|Tom|Jerry|Pica-Pau|Scooby-Doo|Salsicha|Zé Colmeia|Pantera Cor-de-Rosa|Homer Simpson|Bart Simpson|Lisa Simpson|Marge Simpson|Shrek|Burro do Shrek|Fiona|Gato de Botas|Simba|Mufasa|Scar|Timão|Pumba|Zazu|Rafiki|Elsa|Anna|Olaf|Woody|Buzz Lightyear|Jessie (Toy Story)|Sr. Cabeça de Batata|Nemo|Dory|Sulley|Mike Wazowski|Wall-E|Relâmpago McQueen|Mate (Carros)|Remy (Ratatouille)|Garfield|Snoopy|Woodstock|Charlie Brown|Popeye|Olívia Palito|Ursinho Pooh|Cinderela|Branca de Neve|Ariel|Bela|Fera|Aladdin|Jasmine|Gênio da Lâmpada|Rapunzel|Moana|Maui|Mulan|Pocahontas|Tarzan|Mérida (Valente)|Stitch|Judy Hopps|Peter Pan|Sininho|Capitão Gancho|Alice (País das Maravilhas)|Coelho Branco (Alice)|Pinóquio|Dumbo|Bambi|Mogli|Baloo|Malévola|Cruella de Vil|Minions|Gru|Fred Flintstone|Vilma Flintstone|Barney Rubble|Pedrita|Florzinha|Lindinha|Docinho|He-Man|Ben 10|Goku|Vegeta|Gohan|Piccolo|Kuririn|Freeza|Bulma|Mestre Kame|Pikachu|Ash Ketchum|Charizard|Meowth|Naruto|Sasuke|Sakura Haruno|Kakashi|Luffy|Zoro|Sailor Moon|Seiya|Inuyasha|Yugi Muto|Totoro|Doraemon|Shin-chan|Jaspion|Bulbasaur|Squirtle",
-m:"Professor Utônio|Esqueleto|Po (Kung Fu Panda)|Mestre Shifu|Johnny Bravo|Dexter (do laboratório)|Coragem, o Cão Covarde|Timmy Turner|Jimmy Neutron|Tartarugas Ninja|Ned Flanders|Sr. Burns|Krusty, o Palhaço|Manda-Chuva|Penélope Charmosa|Dick Vigarista|Mutley|Mestre dos Magos|Jafar|Úrsula|Rainha Má|Gastón|Chapeleiro Maluco|Bruno (Encanto)|Mirabel|Nick Wilde|Kuzco|Megara|Quasimodo|Esmeralda|Zurg|Slinky|Randall|Brutus (Popeye)|Alvin e os Esquilos|Ursinhos Carinhosos|Os Jetsons|Dora, a Aventureira|Bob, o Construtor|Patrulha Canina|Backyardigans|Rick Sanchez|Eric Cartman|Kenny (South Park)",
+f:"Bob Esponja|Patrick Estrela|Lula Molusco|Sr. Siriguejo|Plankton|Sandy Bochechas|Mickey Mouse|Pato Donald|Pateta|Minnie|Pluto|Tio Patinhas|Pernalonga|Patolino|Frajola|Piu-Piu|Papa-Léguas|Coiote|Taz|Speedy Gonzales|Tom|Jerry|Pica-Pau|Scooby-Doo|Salsicha|Zé Colmeia|Pantera Cor-de-Rosa|Homer Simpson|Bart Simpson|Lisa Simpson|Marge Simpson|Shrek|Burro do Shrek|Fiona|Gato de Botas|Simba|Mufasa|Scar|Timão|Pumba|Zazu|Rafiki|Elsa|Anna|Olaf|Woody|Buzz Lightyear|Jessie (Toy Story)|Sr. Cabeça de Batata|Nemo|Dory|Sulley|Mike Wazowski|Wall-E|Relâmpago McQueen|Mate (Carros)|Remy (Ratatouille)|Garfield|Snoopy|Woodstock|Charlie Brown|Popeye|Olívia Palito|Ursinho Pooh|Cinderela|Branca de Neve|Ariel|Bela (A Bela e a Fera)|Fera (A Bela e a Fera)|Aladdin|Jasmine|Gênio da Lâmpada|Rapunzel|Moana|Maui|Mulan|Pocahontas|Tarzan|Mérida (Valente)|Stitch|Judy Hopps|Peter Pan|Sininho|Capitão Gancho|Alice (País das Maravilhas)|Coelho Branco (Alice)|Pinóquio|Dumbo|Bambi|Mogli|Baloo|Malévola|Cruella de Vil|Minions|Gru|Fred Flintstone|Vilma Flintstone|Barney Rubble|Pedrita|Florzinha|Lindinha|Docinho|He-Man|Ben 10|Goku|Vegeta|Gohan|Piccolo|Kuririn|Freeza|Bulma|Mestre Kame|Pikachu|Ash Ketchum|Charizard|Meowth|Naruto|Sasuke|Sakura Haruno|Kakashi|Luffy|Zoro (One Piece)|Sailor Moon|Seiya|Inuyasha|Yugi Muto|Totoro|Doraemon|Shin-chan|Jaspion|Bulbasaur|Squirtle",
+m:"Professor Utônio|Esqueleto (He-Man)|Po (Kung Fu Panda)|Mestre Shifu|Johnny Bravo|Dexter (do laboratório)|Coragem, o Cão Covarde|Timmy Turner|Jimmy Neutron|Tartarugas Ninja|Ned Flanders|Sr. Burns|Krusty, o Palhaço|Manda-Chuva|Penélope Charmosa|Dick Vigarista|Mutley|Mestre dos Magos|Jafar|Úrsula|Rainha Má|Gastón|Chapeleiro Maluco|Bruno (Encanto)|Mirabel|Nick Wilde|Kuzco|Megara|Quasimodo|Esmeralda (Corcunda de Notre Dame)|Zurg|Slinky|Randall|Brutus (Popeye)|Alvin e os Esquilos|Ursinhos Carinhosos|Os Jetsons|Dora, a Aventureira|Bob, o Construtor|Patrulha Canina|Backyardigans|Rick Sanchez|Eric Cartman|Kenny (South Park)",
 d:"Arnold (Hey Arnold)|Angelica Pickles|Tommy Pickles|Chuckie Finster|She-Ra|Betty Boop|Titio Avô|Pucca|Hortelino Troca-Letras|Gaguinho|Marvin, o Marciano|Pepé Le Gambá|Samurai Jack|Vaca e Frango|Billy e Mandy|Rocko|CatDog|Doug|Kim Possible|Phineas e Ferb|Perry, o Ornitorrinco|Invasor Zim|Bananas de Pijamas|Dee Dee|Milhouse|Apu|Bam-Bam|Bala no Alvo (Toy Story)|Gossamer|Marmaduke|Clifford"},
 
 { id:"herois",
@@ -1007,12 +1052,12 @@ d:"Don Draper|Tony Soprano|George Costanza|Kramer|Al Bundy|Jack Bauer|Fox Mulder
 
 { id:"games",
 f:"Mario|Luigi|Princesa Peach|Bowser|Yoshi|Donkey Kong|Sonic|Tails|Knuckles|Pac-Man|Lara Croft|Link|Zelda|Steve (Minecraft)|Creeper|Kratos|Crash Bandicoot|Ryu|Chun-Li|Blanka|Scorpion|Sub-Zero",
-m:"Master Chief|Solid Snake|Spyro|Wario|Toad|Kirby|Samus Aran|Mega Man|Bomberman|Enderman|Freddy Fazbear|Angry Birds|Ken Masters|Liu Kang|Raiden|Geralt de Rívia|CJ (GTA San Andreas)",
+m:"Master Chief|Solid Snake|Spyro|Wario|Toad|Kirby|Samus Aran|Mega Man|Bomberman|Enderman|Freddy Fazbear|Angry Birds|Ken Masters|Liu Kang|Raiden (Mortal Kombat)|Geralt de Rívia|CJ (GTA San Andreas)",
 d:"Cloud Strife|Sackboy|Rayman|Sora|Ezio Auditore|Arthur Morgan|Nathan Drake|Jill Valentine|Leon Kennedy|Nemesis|Akuma|Sephiroth|Tifa|Waluigi|Diddy Kong|Doomguy|Duke Nukem|Tommy Vercetti|Agente 47|Ganondorf|Bayonetta|Aloy"},
 
 { id:"bichos",
 f:"Lassie|Rex (Toy Story)|Nala|Pongo|Hachiko|Bolt|Beethoven (o cão)|Alex (Madagascar)|Gato Risonho",
-m:"Shere Khan|Marley|Odie|Toto (O Mágico de Oz)|Hedwig|Melman|Gloria (Madagascar)|Mumble (Happy Feet)|Balto|Laika",
+m:"Shere Khan|Marley (o cão)|Odie|Toto (O Mágico de Oz)|Hedwig|Melman|Gloria (Madagascar)|Mumble (Happy Feet)|Balto|Laika",
 d:"Rin Tin Tin|Willy (a baleia)|Flipper|Babe, o Porquinho|Félix, o Gato|Salem (Sabrina)|Nagini|Grumpy Cat|Doge|Cheetara|Crookshanks|Bucéfalo"},
 
 { id:"mito",
@@ -1021,13 +1066,13 @@ m:"Hades|Boitatá|Boto-cor-de-rosa|Chupacabra|São Jorge|Iemanjá|Golias|Sansão
 d:"Hermes|Ares|Ícaro|Cérbero|Odin|Anúbis|Santo Antônio|São Francisco de Assis|Negrinho do Pastoreio|Rei Midas|Pandora|Aquiles|Ulisses|Perseu|Prometeu|Ísis|Valquíria|Kraken|Fênix|Quimera"},
 
 { id:"brasilficcao",
-f:"Mônica|Cebolinha|Cascão|Magali|Chico Bento|Rosinha|Sansão (o coelho da Mônica)|Bidu|Emília|Visconde de Sabugosa|Dona Benta|Pedrinho|Narizinho|Tia Nastácia|Zé Carioca|Louro José|Vira-lata caramelo|Bozo|Fofão|Chaves|Seu Madruga|Chiquinha|Quico|Dona Florinda|Professor Girafales|Seu Barriga|Bruxa do 71|Nhonho|Chapolin Colorado|Didi Mocó|Mussum|Dedé Santana|Zacarias|Professor Raimundo|Seu Peru|Lineu|Agostinho Carrara|Caco Antibes|Vavá|Nazaré Tedesco|Carminha|Tufão|Odete Roitman",
-m:"Capivara Filó|Nino (Castelo Rá-Tim-Bum)|Franjinha|Horácio|Astronauta (Turma da Mônica)|Xaveco|Titi|Mingau|Floquinho|Anjinho|Penadinho|Patati Patatá|Júlio (Cocoricó)|Turma do Balão Mágico|Magda (Sai de Baixo)|Nenê|Bebel|Tuco|Nina (Avenida Brasil)|Suelen (Avenida Brasil)|Zé do Caixão|Tiazinha|Feiticeira|Maria do Bairro|Godinez|Popis|Hermes e Renato|Porta dos Fundos|Pânico na TV|Chiquititas|Malhação|Adelaide (Zorra Total)|Seu Creysson|Maria Joaquina|Cirilo|Viúva Porcina|Sinhozinho Malta",
+f:"Mônica|Cebolinha|Cascão|Magali|Chico Bento|Rosinha|Sansão (o coelho da Mônica)|Bidu|Emília|Visconde de Sabugosa|Dona Benta|Pedrinho|Narizinho|Tia Nastácia|Zé Carioca|Louro José|Vira-lata caramelo|Bozo|Fofão|Chaves|Seu Madruga|Chiquinha|Quico|Dona Florinda|Professor Girafales|Seu Barriga|Bruxa do 71|Nhonho|Chapolin Colorado|Didi Mocó|Mussum|Dedé Santana|Zacarias|Professor Raimundo|Seu Peru|Lineu (A Grande Família)|Agostinho Carrara|Caco Antibes|Vavá (Sai de Baixo)|Nazaré Tedesco|Carminha|Tufão (Avenida Brasil)|Odete Roitman",
+m:"Capivara Filó|Nino (Castelo Rá-Tim-Bum)|Franjinha|Horácio|Astronauta (Turma da Mônica)|Xaveco|Titi|Mingau|Floquinho|Anjinho|Penadinho|Patati Patatá|Júlio (Cocoricó)|Turma do Balão Mágico|Magda (Sai de Baixo)|Nenê (A Grande Família)|Bebel|Tuco|Nina (Avenida Brasil)|Suelen (Avenida Brasil)|Zé do Caixão|Tiazinha|Feiticeira|Maria do Bairro|Godinez|Popis|Hermes e Renato|Porta dos Fundos|Pânico na TV|Chiquititas|Malhação|Adelaide (Zorra Total)|Seu Creysson|Maria Joaquina|Cirilo|Viúva Porcina|Sinhozinho Malta",
 d:"Marquês de Rabicó|Piteco|Papa-Capim|Do Contra|Tio Barnabé|Quindim|Burro Falante|Zé Lelé|Jeremias|Denise (Turma da Mônica)|Doutor Chapatin|Cassandra (Sai de Baixo)|Salomé (Sai de Baixo)|Ribamar|João Canabrava|Vera Verão|Nerso da Capitinga|Choque de Cultura|Bento Carneiro|Tieta|Bibi Perigosa|Dona Jura"},
 
 { id:"musicabr",
 f:"Anitta|Ivete Sangalo|Roberto Carlos|Caetano Veloso|Gilberto Gil|Chico Buarque|Tim Maia|Cazuza|Renato Russo|Raul Seixas|Rita Lee|Elis Regina|Zeca Pagodinho|Marília Mendonça|Ludmilla|Pabllo Vittar|Luísa Sonza|Gusttavo Lima|Wesley Safadão|Luan Santana|Sandy e Junior|Michel Teló|Alcione|Jorge Ben Jor|Milton Nascimento|Gal Costa|Marisa Monte|Djavan|Seu Jorge|Jorge e Mateus|Henrique e Juliano|Chitãozinho e Xororó|Zezé Di Camargo e Luciano|Leandro e Leonardo|Alok|Luiz Gonzaga|Tom Jobim|Legião Urbana|Titãs|Charlie Brown Jr.|Chorão|Erasmo Carlos|Fábio Jr.|Padre Marcelo Rossi",
-m:"Pitty|Maiara e Maraisa|Ana Castela|Claudia Leitte|Daniela Mercury|Mano Brown|Emicida|Matuê|Thiaguinho|Skank|Jota Quest|Capital Inicial|Os Paralamas do Sucesso|Nando Reis|Vanessa da Mata|Zé Ramalho|Alceu Valença|Cartola|Ney Matogrosso|João Gilberto|Lulu Santos|Cássia Eller|Racionais MC's|Léo Santana|Xand Avião|Bruno e Marrone|Zé Neto e Cristiano|Simone Mendes|Paula Fernandes|Roupa Nova|Calcinha Preta|É o Tchan|Olodum|Ana Carolina|Belo|MC Kevinho|Iza|Gloria Groove|Anavitória|Tiago Iorc|Jão",
+m:"Pitty|Maiara e Maraisa|Ana Castela|Claudia Leitte|Daniela Mercury|Mano Brown|Emicida|Matuê|Thiaguinho|Skank|Jota Quest|Capital Inicial|Os Paralamas do Sucesso|Nando Reis|Vanessa da Mata|Zé Ramalho|Alceu Valença|Cartola|Ney Matogrosso|João Gilberto|Lulu Santos|Cássia Eller|Racionais MC's|Léo Santana|Xand Avião|Bruno e Marrone|Zé Neto e Cristiano|Simone Mendes|Paula Fernandes|Roupa Nova|Calcinha Preta|É o Tchan|Olodum|Ana Carolina|Belo (cantor)|MC Kevinho|Iza|Gloria Groove|Anavitória|Tiago Iorc|Jão",
 d:"Paulinho da Viola|Beth Carvalho|Clara Nunes|Elza Soares|Gonzaguinha|Dominguinhos|Belchior|Barão Vermelho|Ultraje a Rigor|Raimundos|Sepultura|CPM 22|NX Zero|Fresno|Los Hermanos|O Rappa|Natiruts|Sabotage|Criolo|Djonga|Xamã|Liniker|Marina Sena|Hugo e Guilherme|Rouge|Timbalada|Vintage Culture|Kevin O Chris|Filipe Ret|Veigh|Tati Quebra Barraco|Valesca Popozuda|Netinho|KLB|Detonautas|Pato Fu|Cidade Negra|Zeca Baleiro"},
 
 { id:"musicaglob",
@@ -1036,9 +1081,9 @@ m:"Backstreet Boys|Spice Girls|Ricky Martin|Enrique Iglesias|Bad Bunny|Shawn Men
 d:"Ray Charles|James Brown|Notorious B.I.G.|50 Cent|Daft Punk|Marshmello|Skrillex|Johnny Cash|Simon e Garfunkel|Gorillaz|Twenty One Pilots|OneRepublic|Sam Smith|Michael Bublé|Norah Jones|Björk|Radiohead|The Cure|Depeche Mode|Iron Maiden|Deep Purple|The Who|Beach Boys|Jimi Hendrix|Janis Joplin|Bee Gees|Village People|Pearl Jam"},
 
 { id:"esportebr",
-f:"Pelé|Neymar|Ronaldo Fenômeno|Ronaldinho Gaúcho|Romário|Zico|Garrincha|Kaká|Cafu|Marta|Vinícius Júnior|Rivaldo|Adriano Imperador|Casemiro|Alisson|Rogério Ceni|Galvão Bueno|Sócrates|Bebeto|Taffarel|Dani Alves|Thiago Silva|Marcelo|Rodrygo|Richarlison|Gabigol|Ederson|Tostão|Robinho|Zagallo|Tite|Dunga|Craque Neto|Endrick|Falcão (do futsal)|Ayrton Senna|Guga|Anderson Silva|Rebeca Andrade|Rayssa Leal|Gabriel Medina|Nelson Piquet|Rubens Barrichello|Felipe Massa|José Aldo|Cesar Cielo|Oscar Schmidt|Bernardinho|Popó|Minotauro (do MMA)|Amanda Nunes|Alex Poatan|Vitor Belfort|Wanderlei Silva|Emerson Fittipaldi|Hortência|Daiane dos Santos|Isaquias Queiroz|Vanderlei Cordeiro de Lima",
-m:"Raí|Djalminha|Edmundo|Jairzinho|Rivellino|Careca|Aldair|Júnior|Leonardo|Denílson|Lúcio|Juninho Pernambucano|Roberto Firmino|Éder Militão|Raphinha|Estêvão|Cristiane|Formiga|Telê Santana|Vanderlei Luxemburgo|Felipão|Gilberto Silva|Elano|Fred|Zinho|Hugo Calderano|Bia Haddad Maia|Torben Grael|Maurren Maggi|Giba|Sheilla Castro|Robert Scheidt|Gustavo Borges|Thiago Pereira|Ana Marcela Cunha|Fernando Scherer|Éder Jofre|Maguila|Charles do Bronx|Royce Gracie|Arthur Zanetti|Diego Hypólito|Ítalo Ferreira",
-d:"Müller|Zetti|Branco|Sissi|Marcelinho Carioca|Túlio Maravilha|Viola|Sávio|Djalma Santos|Nílton Santos|Ademir da Guia|Roberto Dinamite|Reinaldo|Serginho Chulapa|Casagrande|Renato Gaúcho|Mauro Silva|Dida|Marcos (goleiro)|Júlio César (goleiro)|Fabiana Murer|Lars Grael|Martine Grael|Rickson Gracie|Serginho (do vôlei)|Adriana Behar|Jaqueline Carvalho|Bruninho|Fofão (do vôlei)|Paula Pequeno|Bia Ferreira|Rafaela Silva|Sarah Menezes|Mayra Aguiar|Robson Conceição|Hélio Gracie"},
+f:"Pelé|Neymar|Ronaldo Fenômeno|Ronaldinho Gaúcho|Romário|Zico|Garrincha|Kaká|Cafu|Marta|Vinícius Júnior|Rivaldo|Adriano Imperador|Casemiro|Alisson|Rogério Ceni|Galvão Bueno|Sócrates|Bebeto|Taffarel|Dani Alves|Thiago Silva|Marcelo (futebol)|Rodrygo|Richarlison|Gabigol|Ederson|Tostão|Robinho|Zagallo|Tite|Dunga|Craque Neto|Endrick|Falcão (do futsal)|Ayrton Senna|Guga (tênis)|Anderson Silva|Rebeca Andrade|Rayssa Leal|Gabriel Medina|Nelson Piquet|Rubens Barrichello|Felipe Massa|José Aldo|Cesar Cielo|Oscar Schmidt|Bernardinho|Popó|Minotauro (do MMA)|Amanda Nunes|Alex Poatan|Vitor Belfort|Wanderlei Silva|Emerson Fittipaldi|Hortência|Daiane dos Santos|Isaquias Queiroz|Vanderlei Cordeiro de Lima",
+m:"Raí|Djalminha|Edmundo|Jairzinho|Rivellino|Careca (futebol)|Aldair|Júnior (futebol)|Leonardo (futebol)|Denílson|Lúcio|Juninho Pernambucano|Roberto Firmino|Éder Militão|Raphinha|Estêvão|Cristiane|Formiga (futebol)|Telê Santana|Vanderlei Luxemburgo|Felipão|Gilberto Silva|Elano|Fred (futebol)|Zinho|Hugo Calderano|Bia Haddad Maia|Torben Grael|Maurren Maggi|Giba (vôlei)|Sheilla Castro|Robert Scheidt|Gustavo Borges|Thiago Pereira|Ana Marcela Cunha|Fernando Scherer|Éder Jofre|Maguila (boxe)|Charles do Bronx|Royce Gracie|Arthur Zanetti|Diego Hypólito|Ítalo Ferreira",
+d:"Müller|Zetti|Branco (futebol)|Sissi (futebol)|Marcelinho Carioca|Túlio Maravilha|Viola (futebol)|Sávio|Djalma Santos|Nílton Santos|Ademir da Guia|Roberto Dinamite|Reinaldo (futebol)|Serginho Chulapa|Casagrande|Renato Gaúcho|Mauro Silva|Dida|Marcos (goleiro)|Júlio César (goleiro)|Fabiana Murer|Lars Grael|Martine Grael|Rickson Gracie|Serginho (do vôlei)|Adriana Behar|Jaqueline Carvalho|Bruninho|Fofão (do vôlei)|Paula Pequeno|Bia Ferreira|Rafaela Silva|Sarah Menezes|Mayra Aguiar|Robson Conceição|Hélio Gracie"},
 
 { id:"esporteglob",
 f:"Lionel Messi|Cristiano Ronaldo|Diego Maradona|Kylian Mbappé|Erling Haaland|Zinedine Zidane|David Beckham|Robert Lewandowski|Zlatan Ibrahimović|Andrés Iniesta|Xavi|Iker Casillas|Gianluigi Buffon|Mohamed Salah|Luka Modrić|Luis Suárez|Kevin De Bruyne|Pep Guardiola|José Mourinho|Sergio Ramos|Karim Benzema|Thierry Henry|Wayne Rooney|Michael Jordan|Michael Schumacher|Lewis Hamilton|Muhammad Ali|Mike Tyson|Usain Bolt|Serena Williams|Rafael Nadal|Roger Federer|Novak Djokovic|LeBron James|Kobe Bryant|Michael Phelps|Max Verstappen|Shaquille O'Neal|Conor McGregor|Stephen Curry|Floyd Mayweather|Tiger Woods|Simone Biles|Magic Johnson",
@@ -1064,7 +1109,7 @@ d:"Friedrich Nietzsche|René Descartes|Sócrates (o filósofo)|Pitágoras|Hipóc
 
 /* Cartas que são bichos, espalhadas pelos outros baralhos.
    Alimentam o baralho "Bichos" sem duplicar ninguém. */
-var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Patolino|Frajola|Piu-Piu|Taz|Speedy Gonzales|Papa-Léguas|Coiote|Tom|Jerry|Pica-Pau|Scooby-Doo|Zé Colmeia|Pantera Cor-de-Rosa|Burro do Shrek|Gato de Botas|Simba|Mufasa|Scar|Timão|Pumba|Zazu|Rafiki|Nemo|Dory|Remy (Ratatouille)|Garfield|Snoopy|Woodstock|Ursinho Pooh|Dumbo|Bambi|Mogli|Baloo|Judy Hopps|Coelho Branco (Alice)|Bidu|Sansão (o coelho da Mônica)|Vira-lata caramelo|Capivara Filó|Louro José|Floquinho|Mingau|Chewbacca|Godzilla|King Kong|Pikachu|Charizard|Meowth|Bulbasaur|Squirtle|Totoro|Sonic|Tails|Knuckles|Yoshi|Bowser|Donkey Kong|Creeper|Diddy Kong|Mutley|Manda-Chuva|Pucca|Sr. Siriguejo|Plankton|Sandy Bochechas|Coragem, o Cão Covarde|Perry, o Ornitorrinco|Nick Wilde|Mestre Shifu|Patrulha Canina|Marmaduke|Clifford|Rocko|CatDog|Rocket Raccoon|Lassie|Rex (Toy Story)|Nala|Pongo|Hachiko|Bolt|Beethoven (o cão)|Alex (Madagascar)|Gato Risonho|Shere Khan|Marley|Odie|Toto (O Mágico de Oz)|Hedwig|Melman|Gloria (Madagascar)|Mumble (Happy Feet)|Balto|Laika|Rin Tin Tin|Willy (a baleia)|Flipper|Babe, o Porquinho|Félix, o Gato|Salem (Sabrina)|Nagini|Grumpy Cat|Doge|Cheetara|Crookshanks|Bucéfalo|Lobisomem|Boto-cor-de-rosa|Mula sem Cabeça|Curupira|Minotauro|Cérbero|Anúbis|Kraken|Fênix|Quimera|Alvin e os Esquilos";
+var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Patolino|Frajola|Piu-Piu|Taz|Speedy Gonzales|Papa-Léguas|Coiote|Tom|Jerry|Pica-Pau|Scooby-Doo|Zé Colmeia|Pantera Cor-de-Rosa|Burro do Shrek|Gato de Botas|Simba|Mufasa|Scar|Timão|Pumba|Zazu|Rafiki|Nemo|Dory|Remy (Ratatouille)|Garfield|Snoopy|Woodstock|Ursinho Pooh|Dumbo|Bambi|Mogli|Baloo|Judy Hopps|Coelho Branco (Alice)|Bidu|Sansão (o coelho da Mônica)|Vira-lata caramelo|Capivara Filó|Louro José|Floquinho|Mingau|Chewbacca|Godzilla|King Kong|Pikachu|Charizard|Meowth|Bulbasaur|Squirtle|Totoro|Sonic|Tails|Knuckles|Yoshi|Bowser|Donkey Kong|Creeper|Diddy Kong|Mutley|Manda-Chuva|Pucca|Sr. Siriguejo|Plankton|Sandy Bochechas|Coragem, o Cão Covarde|Perry, o Ornitorrinco|Nick Wilde|Mestre Shifu|Patrulha Canina|Marmaduke|Clifford|Rocko|CatDog|Rocket Raccoon|Lassie|Rex (Toy Story)|Nala|Pongo|Hachiko|Bolt|Beethoven (o cão)|Alex (Madagascar)|Gato Risonho|Shere Khan|Marley (o cão)|Odie|Toto (O Mágico de Oz)|Hedwig|Melman|Gloria (Madagascar)|Mumble (Happy Feet)|Balto|Laika|Rin Tin Tin|Willy (a baleia)|Flipper|Babe, o Porquinho|Félix, o Gato|Salem (Sabrina)|Nagini|Grumpy Cat|Doge|Cheetara|Crookshanks|Bucéfalo|Lobisomem|Boto-cor-de-rosa|Mula sem Cabeça|Curupira|Minotauro|Cérbero|Anúbis|Kraken|Fênix|Quimera|Alvin e os Esquilos";
 
 (function(){
   "use strict";
@@ -1098,21 +1143,21 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   /* Ordem fixa — o índice de cada baralho é o bit dele no código. */
   var DECKS = [
-    { name:"Desenhos",       sub:"animação e anime",     br:0, f:fromGroups("animacao") },
-    { name:"Super-heróis",   sub:"Marvel e DC",          br:0, f:fromGroups("herois") },
-    { name:"Cinema",         sub:"personagens de filme", br:0, f:fromGroups("cinema") },
-    { name:"Séries",         sub:"da TV e do streaming", br:0, f:fromGroups("series") },
-    { name:"Games",          sub:"videogame",            br:0, f:fromGroups("games") },
-    { name:"Bichos",         sub:"animais famosos",      br:0, f:function(e){ return !!e.animal; } },
-    { name:"Mitos e lendas", sub:"fé, mito e folclore",  br:0, f:fromGroups("mito") },
-    { name:"Brasil ficção",  sub:"Chaves, Mônica, novela", br:1, f:fromGroups("brasilficcao") },
-    { name:"Música BR",      sub:"quem canta aqui",      br:1, f:fromGroups("musicabr") },
-    { name:"Música mundo",   sub:"quem canta lá fora",   br:0, f:fromGroups("musicaglob") },
-    { name:"Esporte BR",     sub:"craques daqui",        br:1, f:fromGroups("esportebr") },
-    { name:"Esporte mundo",  sub:"craques de fora",      br:0, f:fromGroups("esporteglob") },
-    { name:"Famosos BR",     sub:"TV e internet daqui",  br:1, f:fromGroups("famososbr") },
-    { name:"Famosos mundo",  sub:"TV e cinema de fora",  br:0, f:fromGroups("famososglob") },
-    { name:"História",       sub:"ciência, arte, poder", br:0, f:fromGroups("historia") }
+    { name:"Desenhos",       ic:"🎨", sub:"animação e anime",     br:0, f:fromGroups("animacao") },
+    { name:"Super-heróis",   ic:"🦸", sub:"Marvel e DC",          br:0, f:fromGroups("herois") },
+    { name:"Cinema",         ic:"🎬", sub:"personagens de filme", br:0, f:fromGroups("cinema") },
+    { name:"Séries",         ic:"📺", sub:"da TV e do streaming", br:0, f:fromGroups("series") },
+    { name:"Games",          ic:"🎮", sub:"videogame",            br:0, f:fromGroups("games") },
+    { name:"Bichos",         ic:"🐾", sub:"animais famosos",      br:0, f:function(e){ return !!e.animal; } },
+    { name:"Mitos e lendas", ic:"🐉", sub:"fé, mito e folclore",  br:0, f:fromGroups("mito") },
+    { name:"Brasil ficção",  ic:"🎭", sub:"Chaves, Mônica, novela", br:1, f:fromGroups("brasilficcao") },
+    { name:"Música BR",      ic:"🎵", sub:"quem canta aqui",      br:1, f:fromGroups("musicabr") },
+    { name:"Música mundo",   ic:"🎧", sub:"quem canta lá fora",   br:0, f:fromGroups("musicaglob") },
+    { name:"Esporte BR",     ic:"⚽", sub:"craques daqui",        br:1, f:fromGroups("esportebr") },
+    { name:"Esporte mundo",  ic:"🏆", sub:"craques de fora",      br:0, f:fromGroups("esporteglob") },
+    { name:"Famosos BR",     ic:"🌟", sub:"TV e internet daqui",  br:1, f:fromGroups("famososbr") },
+    { name:"Famosos mundo",  ic:"✨", sub:"TV e cinema de fora",  br:0, f:fromGroups("famososglob") },
+    { name:"História",       ic:"🏛️", sub:"ciência, arte, poder", br:0, f:fromGroups("historia") }
   ];
   var NDECKS = DECKS.length;            // 16 -> 16 bits de máscara
   var ALL_MASK = (1 << NDECKS) - 1;
@@ -1233,6 +1278,51 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
   }
   function buzz(ms){ if (navigator.vibrate){ try{ navigator.vibrate(ms); }catch(e){} } }
 
+  var CORES_CONFETE = ["#ef476f", "#ffd166", "#06d6a0", "#118ab2", "#8338ec"];
+  function chuvaDeConfete(){
+    for (var i = 0; i < 26; i++){
+      var el = document.createElement("div");
+      el.className = "confete";
+      el.style.left = (Math.random() * 100) + "vw";
+      el.style.background = CORES_CONFETE[i % CORES_CONFETE.length];
+      el.style.animationDuration = (1.1 + Math.random() * 0.9) + "s";
+      el.style.animationDelay = (Math.random() * 0.25) + "s";
+      document.body.appendChild(el);
+      (function(el){ setTimeout(function(){ el.remove(); }, 2400); })(el);
+    }
+  }
+
+  var revealT;
+  function mostrarReveal(icone, msg){
+    var el = $("reveal");
+    $("reveal-icon").textContent = icone;
+    $("reveal-msg").textContent = msg;
+    el.hidden = false;
+    requestAnimationFrame(function(){ el.classList.add("on"); });
+    clearTimeout(revealT);
+    revealT = setTimeout(function(){
+      el.classList.remove("on");
+      setTimeout(function(){ el.hidden = true; }, 200);
+    }, 1900);
+  }
+
+  /* Posição some 1x por palpite: 1º ganha confete + troféu, 2º/3º ganham
+     medalha, o resto fica só no toast (destaque demais pra todo mundo não
+     destaca nada), e quem fecha a rodada leva a zoeira do "lerdaço" — só
+     quando o grupo tem mais de 3, senão ele já é medalhista de bronze. */
+  function revelarPosicao(pos, total){
+    if (pos === 1){
+      mostrarReveal("🏆", "Você foi o 1º!");
+      chuvaDeConfete();
+    } else if (pos === 2 || pos === 3){
+      mostrarReveal(pos === 2 ? "🥈" : "🥉", "Você foi o " + pos + "º!");
+    } else if (pos === total && total > 3){
+      mostrarReveal("🐢", "O lerdaço da rodada!!");
+    } else {
+      toast("Isso! Você foi o " + ordinal(pos) + ".");
+    }
+  }
+
   function show(id){
     var all = document.querySelectorAll(".screen");
     for (var i = 0; i < all.length; i++) all[i].classList.remove("on");
@@ -1267,7 +1357,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
     var b = document.createElement("button");
     b.className = "deck"; b.type = "button";
     b.innerHTML = '<span class="tick" aria-hidden="true">✓</span><b></b><span></span>';
-    b.querySelector("b").textContent = t.name;
+    b.querySelector("b").textContent = t.ic + " " + t.name;
     b.querySelectorAll("span")[1].textContent = t.sub;
     b.addEventListener("click", function(){
       draft.mask ^= (1 << i);
@@ -3361,13 +3451,16 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
 
   function ligarAmbientes(){
     ligarAvatares();
-    var criar = $("amb-criar");
-    if (criar) criar.addEventListener("click", function(){
+    function abrirCriar(){
       comConta(function(){
         if (ONLINE){ abrirCriarOnline(); return; }
         abrirCriarSemDb();
       });
-    });
+    }
+    var criar = $("amb-criar");
+    if (criar) criar.addEventListener("click", abrirCriar);
+    var salasCriar = $("salas-criar");
+    if (salasCriar) salasCriar.addEventListener("click", abrirCriar);
     var entrar = $("amb-entrar");
     if (entrar) entrar.addEventListener("click", function(){
       comConta(function(){
@@ -3737,7 +3830,7 @@ var ANIMAIS = "Pluto|Pato Donald|Mickey Mouse|Minnie|Tio Patinhas|Pernalonga|Pat
         $("senha-err").textContent = "";
         $("senha-input").value = "";
         buzz([20, 40, 20]);
-        toast("Isso! Você foi o " + ordinal(res.posicao) + ".");
+        revelarPosicao(res.posicao, SC.vm().placar.length);
       } else if (res && res.erro){
         $("senha-err").textContent = "";
       } else {
